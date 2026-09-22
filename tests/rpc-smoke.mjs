@@ -36,6 +36,7 @@ function finish(res, text) {
 function start(env, extra = []) {
   const args = ['--mode', 'rpc', '--no-extensions', '--no-skills', '--no-prompt-templates', '--provider', 'live-clone-test', '--model', 'mock', '--thinking', 'high', '-e', join(root, 'tests/fixtures/mock-provider.ts'), '-e', join(root, 'src/extension.ts'), ...extra];
   const child = spawn(process.env.PI_BIN || 'pi', args, { cwd: temp, env, stdio: ['pipe', 'pipe', 'pipe'] }); processes.push(child);
+  let generateSummary = false;
   const events = new EventEmitter(); const history = []; const pending = new Map(); let buf = '', stderr = '';
   child.stderr.on('data', x => { stderr += x; });
   const send = x => child.stdin.write(JSON.stringify(x) + '\n');
@@ -47,7 +48,7 @@ function start(env, extra = []) {
       history.push(event); events.emit(event.type, event);
       if (event.type === 'response' && pending.has(event.id)) { pending.get(event.id)(event); pending.delete(event.id); }
       if (event.type === 'extension_ui_request') {
-        if (event.method === 'select') send({ type: 'extension_ui_response', id: event.id, value: event.options[0] });
+        if (event.method === 'select') send({ type: 'extension_ui_response', id: event.id, value: !generateSummary && event.options.some(x => x.startsWith('Generate handoff')) ? event.options[1] : event.options[0] });
         if (event.method === 'editor') send({ type: 'extension_ui_response', id: event.id, value: 'UI reviewed handoff' });
         if (event.method === 'confirm') send({ type: 'extension_ui_response', id: event.id, confirmed: false });
       }
@@ -61,7 +62,7 @@ function start(env, extra = []) {
     let r; try { r = await deadline(response); } catch (e) { throw new Error(`${e.message}; Pi stderr=${stderr}; last events=${JSON.stringify(history.slice(-5))}`); }
     assert.equal(r.success, true, JSON.stringify(r)); return r.data;
   }
-  return { child, command, events, history, stderr: () => stderr };
+  return { child, command, events, history, chooseSummary: () => { generateSummary = true; }, stderr: () => stderr };
 }
 try {
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
@@ -103,9 +104,31 @@ try {
   assert.ok(side.history.some(e => e.type === 'extension_ui_request' && e.method === 'editor'));
   assert.ok((await original.command('get_messages')).messages.some(m => m.customType === 'pi-live-clone-merge' && m.content.includes('UI reviewed handoff')));
   assert.equal(requests.length, 2, 'clone/merge made no model requests');
-  const errors = [...original.history, ...side.history].filter(e => e.type === 'extension_error' || (e.type === 'extension_ui_request' && e.notifyType === 'error'));
+  side.chooseSummary();
+  await side.command('prompt', { message: '/merge-back' });
+  const summaryCall = await modelRequest(2);
+  assert.ok(JSON.stringify(summaryCall.body).includes('ENTIRE discussion/work since this live-clone split'));
+  const editorOpened = new Promise(resolve => {
+    const handler = event => { if (event.method === 'editor') { side.events.off('extension_ui_request', handler); resolve(event); } };
+    side.events.on('extension_ui_request', handler);
+  });
+  finish(summaryCall.res, 'Goal: explore a tangent. Decision: adopt the useful conclusion. Unresolved: validate assumptions.');
+  const editor = await deadline(editorOpened);
+  assert.ok(JSON.stringify(editor).includes('Unresolved: validate assumptions.'), 'generated summary must prefill the review');
+  assert.equal(requests.length, 3, 'summary is exactly one explicitly requested model turn');
+
+  const unusedClone = await request(endpoint, { method: 'clone', id: 'unused-clone' }, { timeoutMs: 20000 });
+  const unused = start({ ...env, HERDR_PANE_ID: 'wTest:p3' }, ['--session', unusedClone.file]);
+  await unused.command('get_state');
+  const exited = once(unused.child, 'exit');
+  unused.child.stdin.write(JSON.stringify({ type: 'prompt', id: 'empty-merge', message: '/merge-back' }) + '\n');
+  await deadline(exited);
+  assert.ok(!unused.history.some(e => e.type === 'extension_ui_request' && ['select', 'editor', 'confirm'].includes(e.method)), 'unused clone exits without merge dialogs');
+  assert.ok(readFileSync(unusedClone.file, 'utf8').includes(unusedClone.childId), 'saved conversation retained');
+  assert.equal(requests.length, 3, 'empty merge must not call a model');
+  const errors = [...original.history, ...side.history, ...unused.history].filter(e => e.type === 'extension_error' || (e.type === 'extension_ui_request' && e.notifyType === 'error'));
   assert.deepEqual(errors, []);
-  console.log('PASS: real Pi busy checkpoint, independent child context/model/effort, durable queued merge, idempotency, editable UI handoff; no extra model calls. Herdr CLI mocked.');
+  console.log('PASS: real Pi busy checkpoint, independent child context/model/effort, durable queued merge, idempotency, editable UI handoff; explicit summary generation and automatic unused-clone exit. Herdr CLI mocked.');
 } finally {
   for (const { res } of requests) if (!res.writableEnded) res.end();
   await Promise.all(processes.map(p => new Promise(resolve => { if (p.exitCode !== null) return resolve(); p.once('exit', resolve); p.kill('SIGTERM'); const timer = setTimeout(() => { p.kill('SIGKILL'); resolve(); }, 5000); timer.unref(); })));

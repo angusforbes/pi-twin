@@ -2,7 +2,7 @@ import type { ExtensionAPI, ExtensionContext } from '@earendil-works/pi-coding-a
 import { randomUUID, createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { Controller } from './controller.mjs';
-import { originOf, transcriptSince, mergeEnvelope, MAX_MERGE_BYTES } from './model.mjs';
+import { originOf, hasCloneActivity, transcriptSince, mergeEnvelope, MAX_MERGE_BYTES } from './model.mjs';
 import { createHerdr } from './herdr.mjs';
 import { stateDir } from './storage.mjs';
 import { runtimeDir, startEndpoint, request, discover } from './ipc.mjs';
@@ -12,6 +12,8 @@ export default function liveClone(pi: ExtensionAPI) {
   let endpoint: Awaited<ReturnType<typeof startEndpoint>> | undefined;
   let uiBusy = false;
   let generation = 0;
+  let reviewAfterSummary: { generation: number; sessionId: string } | undefined;
+  const handoffPrompt = 'Write a useful, self-contained handoff for the original agent covering the ENTIRE discussion/work since this live-clone split, not merely the last reply. Include the goal, conclusions and reasons, decisions, recommendations, unresolved questions, files changed and tests actually run. Distinguish proposals from completed work. Omit empty sections. Do not execute tools or change files for this request. Output the handoff only; the user will review it before anything is sent.';
   const host = createHerdr({ extensionPath: fileURLToPath(import.meta.url) });
   const notify = (ctx: ExtensionContext, text: string, type: 'info' | 'warning' | 'error' = 'info') => { if (ctx.hasUI) ctx.ui.notify(text, type); };
   const errorText = (e: unknown) => e instanceof Error ? e.message : String(e);
@@ -29,11 +31,24 @@ export default function liveClone(pi: ExtensionAPI) {
     if (!ctx.hasUI) throw new Error('Merge preview requires interactive Pi');
     const origin = originOf(ctx.sessionManager);
     if (!origin) return notify(ctx, 'This session is not a live clone.', 'warning');
+    if (!hasCloneActivity(ctx.sessionManager, origin)) {
+      notify(ctx, 'No interaction since cloning; nothing to merge. Exiting this clone; saved session retained.');
+      ctx.shutdown();
+      return;
+    }
     const myGeneration = generation;
     uiBusy = true;
     try {
-      const mode = args.includes('--full') ? 'Full text transcript' : await ctx.ui.select('Merge back: choose what to review', ['Edit summary (prefill last reply)', 'Full text transcript']);
+      const mode = args.includes('--full') ? 'Full text transcript' : args.includes('--draft') ? 'Edit last reply (no summarization)' : await ctx.ui.select('Merge back: choose what to review', ['Generate handoff summary (one model turn)', 'Edit last reply (no summarization)', 'Full text transcript']);
       if (!mode) return;
+      if (generation !== myGeneration || !ctx.isIdle()) throw new Error('Session changed or became busy; handoff cancelled');
+      if (mode.startsWith('Generate')) {
+        reviewAfterSummary = { generation: myGeneration, sessionId: ctx.sessionManager.getSessionId() };
+        try { pi.sendUserMessage(handoffPrompt); }
+        catch (e) { reviewAfterSummary = undefined; throw e; }
+        notify(ctx, 'Generating a handoff from the discussion. The review editor will open when it finishes; nothing is sent automatically.');
+        return;
+      }
       let text: string;
       const kind = mode === 'Full text transcript' ? 'transcript' : 'summary';
       if (kind === 'transcript') text = transcriptSince(ctx.sessionManager, origin);
@@ -109,6 +124,19 @@ export default function liveClone(pi: ExtensionAPI) {
   pi.on('agent_settled', (_event, ctx) => {
     try { controller?.settle(ctx); }
     catch (e) { notify(ctx, `Handoff retained for recovery: ${errorText(e)}`, 'error'); }
+    const pending = reviewAfterSummary;
+    reviewAfterSummary = undefined;
+    if (pending && pending.generation === generation && pending.sessionId === ctx.sessionManager.getSessionId()) {
+      const reply = ctx.sessionManager.getBranch().filter((e: any) => e.type === 'message' && e.message.role === 'assistant').at(-1) as any;
+      if (reply?.message.stopReason !== 'stop') {
+        notify(ctx, 'Handoff generation did not complete normally. Nothing was merged; retry /merge-back when ready.', 'warning');
+        return;
+      }
+      // Let settlement and the initiating command finish before opening another UI.
+      setTimeout(() => {
+        if (pending.generation === generation && ctx.isIdle()) void mergeUI(ctx, '--draft').catch(e => notify(ctx, errorText(e), 'error'));
+      }, 0);
+    }
   });
   pi.on('model_select', (_event, ctx) => { controller?.update(ctx); });
   pi.on('thinking_level_select', (_event, ctx) => { controller?.update(ctx); });
@@ -119,7 +147,7 @@ export default function liveClone(pi: ExtensionAPI) {
     catch (e) { notify(ctx, `Clone name could not be published: ${errorText(e)}`, 'error'); }
   });
   pi.on('session_shutdown', async () => {
-    ++generation; controller?.stop(); controller = undefined;
+    ++generation; reviewAfterSummary = undefined; controller?.stop(); controller = undefined;
     await endpoint?.close(); endpoint = undefined;
     await host.publish({ enabled: false }).catch(() => {});
   });
@@ -141,7 +169,7 @@ export default function liveClone(pi: ExtensionAPI) {
     handler: async (_args, ctx) => {
       if (!originOf(ctx.sessionManager)) return notify(ctx, 'This is not a live clone.', 'warning');
       if (!ctx.isIdle()) return notify(ctx, 'Wait for the clone to finish first.', 'warning');
-      pi.sendUserMessage('Write a concise handoff for the original agent, covering ONLY our discussion/work since this live-clone split: conclusions, recommendations, unresolved questions, files changed and tests actually run. Distinguish proposals from completed work. Do not execute tools or change files for this request. Output the handoff only; the user will review it with /merge-back.');
+      pi.sendUserMessage(handoffPrompt);
     },
   });
   pi.registerCommand('clone-merge-status', {

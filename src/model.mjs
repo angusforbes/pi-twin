@@ -19,6 +19,14 @@ export function originOf(sm) {
   return entries.filter(e => e.type === 'custom' && e.customType === ORIGIN && e.data?.childId === sm.getSessionId()).at(-1)?.data;
 }
 
+/** Be conservative: activity on abandoned branches also prevents automatic exit. */
+export function hasCloneActivity(sm, origin) {
+  const entries = sm.getEntries();
+  const start = entries.findIndex(e => e.type === 'custom' && e.customType === ORIGIN && e.data?.childId === origin.childId);
+  if (start < 0) return true; // Unknown boundary is never proof of an unused clone.
+  return entries.slice(start + 1).some(e => e.type === 'message' || e.type === 'compaction' || e.type === 'branch_summary' || (e.type === 'custom_message' && e.customType !== 'pi-live-clone-notice'));
+}
+
 export function bareName(name) {
   return String(name || 'Agent').replace(/\{#[0-9a-fA-F]{6}\}|\{\}/g, '').replace(/^[^\p{L}\p{N}_]+/u, '').replace(/[\u0000-\u001f\u007f]/g, '').trim().slice(0, 100) || 'Agent';
 }

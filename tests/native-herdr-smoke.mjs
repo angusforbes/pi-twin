@@ -31,7 +31,16 @@ try {
   const tab = await herdr(create); ownedTabs.add(tab.tab.tab_id);
   await herdr(['agent', 'start', label.toLowerCase(), '--kind', 'pi', '--pane', tab.root_pane.pane_id, '--timeout', '30000', '--', '--provider', 'live-clone-test', '--model', 'mock', '--thinking', 'high', '--name', label, '-e', join(root, 'src/extension.ts')]);
   const dir = await runtimeDir({ ...process.env, ...env });
-  const original = (await discover({ dir })).find(d => d.paneId === tab.root_pane.pane_id);
+  // Herdr can detect an idle Pi screen before asynchronous session_start finishes.
+  let original;
+  for (let attempt = 0; attempt < 100 && !original; attempt++) {
+    original = (await discover({ dir })).find(d => d.paneId === tab.root_pane.pane_id);
+    if (!original) await new Promise(resolve => setTimeout(resolve, 100));
+  }
+  if (!original) {
+    const { stdout } = await exec('herdr', ['agent', 'read', tab.root_pane.pane_id, '--source', 'recent-unwrapped', '--lines', '60']);
+    console.error(stdout);
+  }
   assert.ok(original, 'real original endpoint started');
   const beforeState = await request(original, { method: 'status' });
   const child = await request(original, { method: 'clone', id: 'native-smoke-clone' }, { timeoutMs: 40000 });

@@ -4,7 +4,7 @@ import { mkdtempSync, rmSync, readFileSync, existsSync, statSync } from 'node:fs
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { SessionManager } from '@earendil-works/pi-coding-agent';
-import { captureSnapshot, createClone, originOf, bareName, reserveName, transcriptSince, mergeEnvelope, formatMerge, Mailbox } from '../src/model.mjs';
+import { captureSnapshot, createClone, originOf, hasCloneActivity, bareName, reserveName, transcriptSince, mergeEnvelope, formatMerge, Mailbox } from '../src/model.mjs';
 
 function fixture(t) {
   const dir = mkdtempSync(join(tmpdir(), 'live-clone-test-'));
@@ -86,6 +86,24 @@ test('transcript contains only divergent text, no thinking, and labels omitted i
   const text = transcriptSince(child, originOf(child));
   assert.ok(text.includes('Useful tangent')); assert.ok(text.includes('Image attachment omitted'));
   assert.ok(!text.includes('private chain')); assert.ok(!text.includes('We have a plan'));
+});
+test('unused clone ignores inherited conversation, notice, and settings', t => {
+  const { dir, sm } = fixture(t); conversation(sm);
+  const child = SessionManager.open(clone(captureSnapshot(sm), dir).file);
+  child.appendThinkingLevelChange('low'); child.appendSessionInfo('Renamed');
+  assert.equal(hasCloneActivity(child, originOf(child)), false);
+  const boundary = child.getLeafId();
+  child.appendMessage({ role: 'user', content: 'New discussion', timestamp: 4 });
+  assert.equal(hasCloneActivity(child, originOf(child)), true);
+  child.branch(boundary);
+  assert.equal(hasCloneActivity(child, originOf(child)), true, 'abandoned discussion must not auto-exit');
+});
+test('imported material and unknown boundary are not treated as unused', t => {
+  const { dir, sm } = fixture(t);
+  const child = SessionManager.open(clone(captureSnapshot(sm), dir).file);
+  assert.equal(hasCloneActivity(child, { childId: 'missing' }), true);
+  child.appendCustomMessageEntry('imported-context', 'Important handoff', true, {});
+  assert.equal(hasCloneActivity(child, originOf(child)), true);
 });
 test('names are deterministic exclusive reservations with decoration removed', t => {
   const { dir } = fixture(t);
