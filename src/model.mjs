@@ -36,14 +36,15 @@ export function reserveName(dir, sourceId, sourceName) {
   if (!/^[a-zA-Z0-9_-]{1,128}$/.test(sourceId)) throw new Error('Invalid source session ID');
   mkdirSync(dir, { recursive: true, mode: 0o700 });
   const root = bareName(sourceName);
-  for (let i = 1; i <= 100000; i++) {
-    const marker = join(dir, `${sourceId}-${i}.reserved`);
+  for (const letter of 'abcdefghijklmnopqrstuvwxyz') {
+    const marker = join(dir, `${sourceId}-letter-${letter}.reserved`);
+    const name = `${root}[${letter}]`;
     try {
-      writeFileSync(marker, JSON.stringify({ sourceId, name: `${root}_clone${i}` }), { flag: 'wx', mode: 0o600 });
-      return `${root}_clone${i}`;
+      writeFileSync(marker, JSON.stringify({ sourceId, name }), { flag: 'wx', mode: 0o600 });
+      return name;
     } catch (e) { if (e.code !== 'EEXIST') throw e; }
   }
-  throw new Error('Clone name space exhausted');
+  throw new Error('All split names [a] through [z] have been allocated for this parent. Names are not reused.');
 }
 
 /**

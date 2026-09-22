@@ -6,11 +6,11 @@ Experimental Pi package, initially for **Herdr on Linux/macOS**. Local developme
 
 ## Behavior
 
-- `/live-clone` opens and focuses a **new Herdr tab**. The original process and conversation stay where they are.
+- `/split` opens and focuses a **new Herdr tab**. The original process and conversation stay where they are.
 - **Idle source:** copy the current active conversation branch.
 - **Busy source:** copy the checkpoint before the prompt initiating the current run. Retain that boundary across retries and queued continuations until Pi fully settles. If the extension did not observe a safe boundary, fail rather than guess.
 - Inherit the **current provider/model, effective thinking effort, and working directory**. Context includes the selected branch's compaction checkpoints. Model/effort can diverge independently afterward.
-- Names are `Sift_clone1`, `Sift_clone2`, etc. Name reservations survive restarts. Cloning a clone creates a child of that clone.
+- Names are `Sift[a]`, `Sift[b]`, etc. Name reservations survive restarts. Cloning a clone creates a child of that clone.
 - The new agent waits for your input: no automatic prompt, replayed task, or hidden model call.
 - **Both agents share files.** Conversation branching does not rewind the filesystem, create a Git branch, or isolate writes. A warning is shown; coordinate overlapping edits as you would between any agents.
 
@@ -34,15 +34,15 @@ Nothing in these instructions requires restarting Herdr. **Installing a patched 
 
 | Command | Meaning |
 |---|---|
-| `/live-clone` | New live clone tab; original remains active |
+| `/split` | New live clone tab; original remains active |
 | `/clone-handoff` | Ask this clone to draft a concise handoff; explicitly runs one ordinary agent request |
-| `/merge-back` | Review/edit a summary or text transcript and send it to the original |
-| `/merge-back --full` | Review the divergent text transcript |
+| `/merge` | Review/edit a summary or text transcript and send it to the original |
+| `/merge --full` | Review the divergent text transcript |
 | `/clone-merge-status` | Check latest submitted handoff; optionally close after confirmed import |
 
-`/merge-back` offers **Generate handoff summary** (one explicitly requested model turn), **Edit last reply (no summarization)**, or **Full text transcript**. Generation covers the discussion since cloning and opens the review editor when finished. Nothing is sent until you review it and select how the original should use it. `/clone-handoff` remains available as a separate draft-only command.
+`/merge` offers **Generate handoff summary** (one explicitly requested model turn), **Edit last reply (no summarization)**, or **Full text transcript**. Generation covers the discussion since cloning and opens the review editor when finished. Nothing is sent until you review it and select how the original should use it. `/clone-handoff` remains available as a separate draft-only command.
 
-If a clone has had **no interaction since creation**, `/merge-back` simply exits that clone without a merge or confirmation dialog. Its saved session remains. Inherited history, the clone notice, and settings changes do not count as interaction; new messages, imported context, and discussion on abandoned branches do. Busy clones are never automatically exited.
+If a clone has had **no interaction since creation**, `/merge` simply exits that clone without a merge or confirmation dialog. Its saved session remains. Inherited history, the clone notice, and settings changes do not count as interaction; new messages, imported context, and discussion on abandoned branches do. Busy clones are never automatically exited.
 
 During merge review choose **background information only** (default) or explicitly ask the original to act after its current task. A busy original receives nothing mid-task: the handoff lives in a durable queue until full `agent_settled`.
 
@@ -64,7 +64,7 @@ The extension exposes a private, local Unix socket while the session is running.
 
 Use `--session SESSION_ID` instead of `--pane` for stable targeting. `--socket HERDR_SOCKET` disambiguates Herdr instances. `--id REQUEST_ID` makes an external clone request safely identifiable; an ambiguous launch is retained, not automatically retried.
 
-The extension advertises `live_clone=1`, `live_clone_session=<session ID>`, and (on clones) `live_clone_parent=1` pane metadata. Menu adapters pass `--expected-session ID` to refuse an action if that pane switched sessions after the menu opened. The optional Herdr patch adds native context-menu actions using those capabilities. Unpatched Herdr still works through `/live-clone` and the CLI. Never use `herdr agent prompt` as a substitute for this private control channel on a busy source.
+The extension advertises `live_clone=1`, `live_clone_session=<session ID>`, and (on clones) `live_clone_parent=1` pane metadata. Menu adapters pass `--expected-session ID` to refuse an action if that pane switched sessions after the menu opened. The optional Herdr patch adds native context-menu actions using those capabilities. Unpatched Herdr still works through `/split` and the CLI. Never use `herdr agent prompt` as a substitute for this private control channel on a busy source.
 
 ## Storage and security
 

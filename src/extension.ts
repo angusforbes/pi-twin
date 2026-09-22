@@ -39,7 +39,7 @@ export default function liveClone(pi: ExtensionAPI) {
     const myGeneration = generation;
     uiBusy = true;
     try {
-      const mode = args.includes('--full') ? 'Full text transcript' : args.includes('--draft') ? 'Edit last reply (no summarization)' : await ctx.ui.select('Merge back: choose what to review', ['Generate handoff summary (one model turn)', 'Edit last reply (no summarization)', 'Full text transcript']);
+      const mode = args.includes('--full') ? 'Full text transcript' : args.includes('--draft') ? 'Edit last reply (no summarization)' : await ctx.ui.select('Agent Merge: choose what to review', ['Generate handoff summary (one model turn)', 'Edit last reply (no summarization)', 'Full text transcript']);
       if (!mode) return;
       if (generation !== myGeneration || !ctx.isIdle()) throw new Error('Session changed or became busy; handoff cancelled');
       if (mode.startsWith('Generate')) {
@@ -129,7 +129,7 @@ export default function liveClone(pi: ExtensionAPI) {
     if (pending && pending.generation === generation && pending.sessionId === ctx.sessionManager.getSessionId()) {
       const reply = ctx.sessionManager.getBranch().filter((e: any) => e.type === 'message' && e.message.role === 'assistant').at(-1) as any;
       if (reply?.message.stopReason !== 'stop') {
-        notify(ctx, 'Handoff generation did not complete normally. Nothing was merged; retry /merge-back when ready.', 'warning');
+        notify(ctx, 'Handoff generation did not complete normally. Nothing was merged; retry /merge when ready.', 'warning');
         return;
       }
       // Let settlement and the initiating command finish before opening another UI.
@@ -152,7 +152,7 @@ export default function liveClone(pi: ExtensionAPI) {
     await host.publish({ enabled: false }).catch(() => {});
   });
 
-  pi.registerCommand('live-clone', {
+  pi.registerCommand('split', {
     description: 'Open an independent clone in a new Herdr tab; keep this agent running',
     handler: async (_args, ctx) => {
       try {
@@ -163,7 +163,7 @@ export default function liveClone(pi: ExtensionAPI) {
       } catch (e) { notify(ctx, errorText(e), 'error'); }
     },
   });
-  pi.registerCommand('merge-back', { description: 'Review and send this clone’s handoff to its original', handler: (args, ctx) => mergeUI(ctx, args) });
+  pi.registerCommand('merge', { description: 'Review and send this clone’s handoff to its original', handler: (args, ctx) => mergeUI(ctx, args) });
   pi.registerCommand('clone-handoff', {
     description: 'Ask this clone to draft a concise handoff (one normal agent turn)',
     handler: async (_args, ctx) => {

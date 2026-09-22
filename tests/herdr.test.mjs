@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHerdr, parseResponse } from '../src/herdr.mjs';
 
-const child = { childId: '01234567-89ab-cdef-0123-456789abcdef', name: 'Sift_clone1', cwd: '/tmp/project with spaces', file: '/tmp/conversation with spaces.jsonl', model: { provider: 'anthropic', id: 'claude-sonnet-4-6' }, thinking: 'high' };
+const child = { childId: '01234567-89ab-cdef-0123-456789abcdef', name: 'Sift[a]', cwd: '/tmp/project with spaces', file: '/tmp/conversation with spaces.jsonl', model: { provider: 'anthropic', id: 'claude-sonnet-4-6' }, thinking: 'high' };
 test('Herdr launches an independent tab with native agent start and inherited settings', async () => {
   const calls = [];
   const host = createHerdr({ env: { HERDR_PANE_ID: 'w8:pS', HERDR_SOCKET_PATH: '/tmp/herdr.sock' }, extensionPath: '/tmp/extension.ts', run: async (cmd, args) => {
@@ -19,9 +19,9 @@ test('non-Herdr host refuses automatic launch', async () => {
 });
 test('publish uses explicit capability tokens and only renames own clone pane', async () => {
   const calls = []; const host = createHerdr({ env: { HERDR_PANE_ID: 'w8:pT' }, run: async (_cmd, args) => { calls.push(args); return { stdout: '{}' }; } });
-  await host.publish({ name: 'Sift_clone1', clone: true });
+  await host.publish({ name: 'Sift[a]', clone: true });
   assert.ok(calls[0].includes('live_clone=1')); assert.ok(calls[0].includes('live_clone_parent=1'));
-  assert.ok(calls[0].includes('name=Sift_clone1'));
+  assert.ok(calls[0].includes('name=Sift[a]'));
   assert.equal(calls.length, 1);
   await host.publish({ enabled: false }); assert.ok(calls[1].includes('--clear-token'));
 });

@@ -50,14 +50,14 @@ try {
   const clonePeer = (await discover({ dir })).find(d => d.sessionId === child.childId);
   assert.ok(clonePeer, 'real clone process started its endpoint');
   const cloneState = await request(clonePeer, { method: 'status' });
-  assert.equal(cloneState.name, label + '_clone1'); assert.equal(cloneState.idle, true);
+  assert.equal(cloneState.name, label + '[a]'); assert.equal(cloneState.idle, true);
   assert.equal((await request(original, { method: 'status' })).sessionId, beforeState.sessionId);
   const saved = SessionManager.open(child.file);
   assert.equal(saved.buildSessionContext().model.provider, 'live-clone-test'); assert.equal(saved.buildSessionContext().thinkingLevel, 'high');
   assert.equal(saved.getCwd(), temp);
   const info = await herdr(['agent', 'get', child.host.paneId]);
   assert.equal(cloneState.sessionId, child.childId);
-  assert.equal(info.agent.tokens?.name, label + '_clone1', JSON.stringify(info));
+  assert.equal(info.agent.tokens?.name, label + '[a]', JSON.stringify(info));
   assert.equal(info.agent.tokens?.live_clone_session, child.childId);
   console.log('PASS: actual Herdr creates two independent Pi tabs; original survives; clone named, idle, correct cwd/model/effort. No model calls. Native context-menu clicks not exercised.');
 } finally {

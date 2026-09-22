@@ -24,7 +24,7 @@ test('CLI pins pane actions to the expected Pi session', async t => {
   assert.equal(JSON.parse(r.stdout).status, 'launched'); assert.equal(calls, 1);
 });
 test('CLI does not label a retained in-progress record as successful launch', async t => {
-  const cli = await fixture(t, () => ({ status: 'prepared', name: 'Sift_clone1' }));
+  const cli = await fixture(t, () => ({ status: 'prepared', name: 'Sift[a]' }));
   await assert.rejects(cli(['clone', '--pane', 'w1:p1', '--id', 'known-request']), e => e.code === 2 && e.stderr.includes('known-request'));
 });
 test('CLI reports request ID after an uncertain clone operation and never retries', async t => {

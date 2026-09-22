@@ -80,13 +80,13 @@ try {
   await original.command('prompt', { message: 'SOURCE BUSY TASK MUST NOT APPEAR IN CLONE' });
   const sourceCall = await modelRequest(0);
   const cloned = await request(endpoint, { method: 'clone', id: 'smoke-clone-1' }, { timeoutMs: 20000 });
-  assert.equal(cloned.status, 'launched'); assert.equal(cloned.name, 'Sift_clone1');
+  assert.equal(cloned.status, 'launched'); assert.equal(cloned.name, 'Sift[a]');
   assert.equal((await original.command('get_state')).isStreaming, true);
   assert.ok(!readFileSync(cloned.file, 'utf8').includes('SOURCE BUSY TASK'));
   const side = start({ ...env, HERDR_PANE_ID: 'wTest:p2' }, ['--session', cloned.file]);
   const sideState = await side.command('get_state');
   assert.equal(sideState.sessionId, cloned.childId); assert.equal(sideState.thinkingLevel, 'high');
-  assert.equal(sideState.model.id, 'mock'); assert.equal(sideState.sessionName, 'Sift_clone1');
+  assert.equal(sideState.model.id, 'mock'); assert.equal(sideState.sessionName, 'Sift[a]');
   const sideSettled = once(side.events, 'agent_settled');
   await side.command('prompt', { message: 'Discuss tangent' });
   finish((await modelRequest(1)).res, 'A useful tangent conclusion'); await deadline(sideSettled);
@@ -100,12 +100,12 @@ try {
   const mergeIndex = messages.findIndex(m => m.customType === 'pi-live-clone-merge');
   assert.ok(mergeIndex > resultIndex, 'merge follows completed original task');
   assert.equal((await request(endpoint, { method: 'merge', envelope: merge })).status, 'delivered');
-  await side.command('prompt', { message: '/merge-back' });
+  await side.command('prompt', { message: '/merge' });
   assert.ok(side.history.some(e => e.type === 'extension_ui_request' && e.method === 'editor'));
   assert.ok((await original.command('get_messages')).messages.some(m => m.customType === 'pi-live-clone-merge' && m.content.includes('UI reviewed handoff')));
   assert.equal(requests.length, 2, 'clone/merge made no model requests');
   side.chooseSummary();
-  await side.command('prompt', { message: '/merge-back' });
+  await side.command('prompt', { message: '/merge' });
   const summaryCall = await modelRequest(2);
   assert.ok(JSON.stringify(summaryCall.body).includes('ENTIRE discussion/work since this live-clone split'));
   const editorOpened = new Promise(resolve => {
@@ -121,11 +121,15 @@ try {
   const unused = start({ ...env, HERDR_PANE_ID: 'wTest:p3' }, ['--session', unusedClone.file]);
   await unused.command('get_state');
   const exited = once(unused.child, 'exit');
-  unused.child.stdin.write(JSON.stringify({ type: 'prompt', id: 'empty-merge', message: '/merge-back' }) + '\n');
+  unused.child.stdin.write(JSON.stringify({ type: 'prompt', id: 'empty-merge', message: '/merge' }) + '\n');
   await deadline(exited);
   assert.ok(!unused.history.some(e => e.type === 'extension_ui_request' && ['select', 'editor', 'confirm'].includes(e.method)), 'unused clone exits without merge dialogs');
   assert.ok(readFileSync(unusedClone.file, 'utf8').includes(unusedClone.childId), 'saved conversation retained');
   assert.equal(requests.length, 3, 'empty merge must not call a model');
+  await original.command('prompt', { message: '/split' });
+  const splitStatus = await request(endpoint, { method: 'status' });
+  assert.ok(splitStatus.clones.some(c => c.name === 'Sift[c]' && c.status === 'launched'), '/split launches the next lettered child');
+  assert.equal(requests.length, 3, '/split is a command, not a model prompt');
   const errors = [...original.history, ...side.history, ...unused.history].filter(e => e.type === 'extension_error' || (e.type === 'extension_ui_request' && e.notifyType === 'error'));
   assert.deepEqual(errors, []);
   console.log('PASS: real Pi busy checkpoint, independent child context/model/effort, durable queued merge, idempotency, editable UI handoff; explicit summary generation and automatic unused-clone exit. Herdr CLI mocked.');

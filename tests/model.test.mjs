@@ -20,7 +20,7 @@ function conversation(sm) {
   sm.appendMessage({ role: 'assistant', content: [{ type: 'text', text: 'We have a plan' }], api: 'anthropic-messages', provider: 'anthropic', model: 'claude-sonnet-4-6', timestamp: 2, stopReason: 'stop', usage: {} });
 }
 function clone(snapshot, dir, extra = {}) {
-  return createClone({ SessionManager, snapshot, sessionDir: dir, name: 'Sift_clone1', model: { provider: 'anthropic', id: 'claude-opus-4-6' }, thinking: 'high', busy: false, ...extra });
+  return createClone({ SessionManager, snapshot, sessionDir: dir, name: 'Sift[a]', model: { provider: 'anthropic', id: 'claude-opus-4-6' }, thinking: 'high', busy: false, ...extra });
 }
 test('native branch extraction preserves context and current settings without touching source', t => {
   const { dir, sm } = fixture(t); conversation(sm);
@@ -30,7 +30,7 @@ test('native branch extraction preserves context and current settings without to
   assert.notEqual(reopened.getSessionId(), sm.getSessionId());
   assert.equal(reopened.getHeader().parentSession, source);
   assert.equal(reopened.getCwd(), sm.getCwd());
-  assert.equal(reopened.getSessionName(), 'Sift_clone1');
+  assert.equal(reopened.getSessionName(), 'Sift[a]');
   assert.equal(reopened.buildSessionContext().model.modelId, 'claude-opus-4-6');
   assert.equal(reopened.buildSessionContext().thinkingLevel, 'high');
   assert.ok(reopened.buildSessionContext().messages.some(m => m.role === 'user' && m.content === 'Discuss the project'));
@@ -53,7 +53,7 @@ test('first-prompt / metadata-only session is materialized and readable', t => {
   assert.equal(existsSync(sm.getSessionFile()), false);
   const child = clone(captureSnapshot(sm), dir, { busy: true });
   const reopened = SessionManager.open(child.file);
-  assert.equal(reopened.getSessionName(), 'Sift_clone1');
+  assert.equal(reopened.getSessionName(), 'Sift[a]');
   assert.equal(originOf(reopened).childId, child.childId);
   assert.equal(reopened.getEntries().some(e => e.type === 'message'), false);
 });
@@ -66,9 +66,9 @@ test('clone of clone records immediate parent and keeps only its own merge bound
   const { dir, sm } = fixture(t); conversation(sm);
   const one = SessionManager.open(clone(captureSnapshot(sm), dir).file);
   one.appendMessage({ role: 'user', content: 'First tangent', timestamp: 3 });
-  const two = SessionManager.open(clone(captureSnapshot(one), dir, { name: 'Sift_clone1_clone1' }).file);
+  const two = SessionManager.open(clone(captureSnapshot(one), dir, { name: 'Sift[a][a]' }).file);
   assert.equal(originOf(two).parentId, one.getSessionId());
-  assert.equal(originOf(two).name, 'Sift_clone1_clone1');
+  assert.equal(originOf(two).name, 'Sift[a][a]');
   assert.ok(!transcriptSince(two, originOf(two)).includes('First tangent'));
 });
 test('native extraction preserves compaction context', t => {
@@ -105,18 +105,24 @@ test('imported material and unknown boundary are not treated as unused', t => {
   child.appendCustomMessageEntry('imported-context', 'Important handoff', true, {});
   assert.equal(hasCloneActivity(child, originOf(child)), true);
 });
+test('split names span a through z, remain reserved, and never wrap', t => {
+  const { dir } = fixture(t);
+  for (const letter of 'abcdefghijklmnopqrstuvwxyz') assert.equal(reserveName(dir, 'parent', 'Thumper'), `Thumper[${letter}]`);
+  assert.throws(() => reserveName(dir, 'parent', 'Thumper'), /All split names/);
+  assert.equal(reserveName(dir, 'other-parent', 'Thumper[a]'), 'Thumper[a][a]');
+});
 test('names are deterministic exclusive reservations with decoration removed', t => {
   const { dir } = fixture(t);
   assert.equal(bareName('🌀 {#ffffff}Sift{}'), 'Sift');
-  assert.equal(reserveName(dir, 'session1', 'Sift'), 'Sift_clone1');
-  assert.equal(reserveName(dir, 'session1', 'Sift'), 'Sift_clone2');
+  assert.equal(reserveName(dir, 'session1', 'Sift'), 'Sift[a]');
+  assert.equal(reserveName(dir, 'session1', 'Sift'), 'Sift[b]');
   assert.throws(() => reserveName(dir, '../escape', 'Sift'));
 });
 test('merge envelope bounds data, explicitly attributes, and does not request action by default', () => {
-  const origin = { childId: 'child', parentId: 'parent', name: 'Sift_clone1', boundaryId: 'point' };
+  const origin = { childId: 'child', parentId: 'parent', name: 'Sift[a]', boundaryId: 'point' };
   const m = mergeEnvelope({ origin, sourceFile: '/saved/session', text: 'Interesting idea' });
   assert.equal(m.act, false); assert.ok(formatMerge(m).includes('Background context only'));
-  assert.ok(formatMerge(m).includes('Sift_clone1')); assert.throws(() => mergeEnvelope({ origin, text: 'x'.repeat(100000) }));
+  assert.ok(formatMerge(m).includes('Sift[a]')); assert.throws(() => mergeEnvelope({ origin, text: 'x'.repeat(100000) }));
 });
 test('mailbox survives reopening and supports receipt updates', t => {
   const { dir } = fixture(t); const box = new Mailbox(join(dir, 'mail'));
