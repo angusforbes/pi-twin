@@ -1,7 +1,7 @@
 {
-  "name": "pi-live-clone",
+  "name": "pi-twin",
   "version": "0.1.0",
-  "description": "Parallel Pi conversation clones with safe checkpoints and explicit merge-back handoffs",
+  "description": "Split a live Pi conversation into a twin, then review and merge its handoff",
   "type": "module",
   "license": "MIT",
   "keywords": [
@@ -20,6 +20,7 @@
     ]
   },
   "bin": {
+    "pi-twin": "./bin/pi-live-clone.mjs",
     "pi-live-clone": "./bin/pi-live-clone.mjs"
   },
   "files": [
