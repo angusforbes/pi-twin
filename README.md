@@ -18,6 +18,12 @@ Experimental Pi package, initially for **Herdr on Linux/macOS**. Local developme
 
 Pi's built-in `/clone` remains unchanged. This package uses Pi's native branch extraction on an **independent snapshot manager**, then launches a second process rather than switching the source runtime.
 
+## Install from GitHub
+
+`pi install git:github.com/angusforbes/pi-twin`
+
+Then run `/reload` in an idle Pi session inside Herdr. Use `/split` and `/merge`. Native **Agent Split / Agent Merge** tab-menu entries require the separate [Herdr integration patch](integrations/herdr/README.md); installing this package alone does not modify Herdr.
+
 ## Try locally
 
 From the package directory, install development dependencies: `npm ci --ignore-scripts`.

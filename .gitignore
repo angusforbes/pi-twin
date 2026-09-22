@@ -3,3 +3,5 @@ coverage/
 .cache/
 *.tgz
 .env
+# Local machine/session handoff, not public project documentation.
+STATUS.md

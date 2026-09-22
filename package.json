@@ -4,6 +4,9 @@
   "description": "Split a live Pi conversation into a twin, then review and merge its handoff",
   "type": "module",
   "license": "MIT",
+  "repository": { "type": "git", "url": "git+https://github.com/angusforbes/pi-twin.git" },
+  "homepage": "https://github.com/angusforbes/pi-twin#readme",
+  "bugs": { "url": "https://github.com/angusforbes/pi-twin/issues" },
   "keywords": [
     "pi-package",
     "pi",
