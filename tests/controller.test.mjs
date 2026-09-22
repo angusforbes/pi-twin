@@ -30,6 +30,18 @@ test('clone does not change original session or invoke agent; duplicate request 
   assert.equal(one.childId, two.childId); assert.equal(f.launches.length, 1); assert.equal(f.prompts.length, 0);
   assert.equal(readFileSync(f.sm.getSessionFile(), 'utf8'), original);
 });
+test('display-name lookup is idempotent and refuses a replaced source', async t => {
+  const f = fixture(t);
+  f.pi.getSessionName = () => undefined;
+  f.sm.getSessionName = () => undefined;
+  let resolve;
+  f.controller.resolveName = () => new Promise(r => { resolve = r; });
+  const pending = f.controller.clone('slow-name');
+  assert.equal((await f.controller.clone('slow-name')).status, 'creating');
+  f.controller.stop(); resolve('Thumper');
+  await assert.rejects(pending, /replaced or shut down/);
+  assert.equal(f.launches.length, 0);
+});
 test('busy clone freezes before first task and does not advance checkpoint during retries', async t => {
   const f = fixture(t); f.controller.beforeRun(f.ctx); f.setIdle(false);
   f.sm.appendMessage({ role: 'user', content: 'DO NOT COPY THIS', timestamp: 3 });

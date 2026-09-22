@@ -1,14 +1,21 @@
 import type { ExtensionAPI, ExtensionContext } from '@earendil-works/pi-coding-agent';
 import { randomUUID, createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
-import { Controller } from './controller.mjs';
-import { originOf, hasCloneActivity, transcriptSince, mergeEnvelope, MAX_MERGE_BYTES } from './model.mjs';
-import { createHerdr } from './herdr.mjs';
-import { stateDir } from './storage.mjs';
-import { runtimeDir, startEndpoint, request, discover } from './ipc.mjs';
+import { SessionManager } from '@earendil-works/pi-coding-agent';
+import type { Controller as ControllerType } from './controller.mjs';
+import { loadCore } from './load-core.mjs';
 
-export default function liveClone(pi: ExtensionAPI) {
-  let controller: Controller | undefined;
+export default async function liveClone(pi: ExtensionAPI) {
+  const core = await loadCore(SessionManager) as {
+    controller: typeof import('./controller.mjs'); model: typeof import('./model.mjs');
+    herdr: typeof import('./herdr.mjs'); storage: typeof import('./storage.mjs'); ipc: typeof import('./ipc.mjs');
+  };
+  const { Controller } = core.controller;
+  const { originOf, hasCloneActivity, transcriptSince, mergeEnvelope, MAX_MERGE_BYTES } = core.model;
+  const { createHerdr } = core.herdr;
+  const { stateDir } = core.storage;
+  const { runtimeDir, startEndpoint, request, discover } = core.ipc;
+  let controller: ControllerType | undefined;
   let endpoint: Awaited<ReturnType<typeof startEndpoint>> | undefined;
   let uiBusy = false;
   let generation = 0;
@@ -94,7 +101,7 @@ export default function liveClone(pi: ExtensionAPI) {
   pi.on('session_start', async (_event, ctx) => {
     const mine = ++generation;
     const dir = await runtimeDir();
-    const current = new Controller({ pi, ctx, dir: stateDir(), launch: (child: any) => host.launch(child) });
+    const current = new Controller({ pi, ctx, dir: stateDir(), launch: (child: any) => host.launch(child), resolveName: () => host.displayName() });
     controller = current;
     const origin = originOf(ctx.sessionManager);
     try {

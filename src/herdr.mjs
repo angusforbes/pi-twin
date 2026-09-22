@@ -20,6 +20,11 @@ export function createHerdr({ env = process.env, run = exec, extensionPath } = {
   return {
     paneId,
     socketPath: env.HERDR_SOCKET_PATH ?? '',
+    async displayName() {
+      if (!paneId) return undefined;
+      const info = await call(['agent', 'get', paneId]);
+      return info.agent?.tokens?.name;
+    },
     async launch(child) {
       if (!paneId || !workspace) throw new Error('Automatic tab launch currently requires Herdr');
       const createArgs = ['tab', 'create', '--workspace', workspace, '--cwd', child.cwd, '--label', child.name, '--focus'];

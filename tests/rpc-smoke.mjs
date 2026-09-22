@@ -130,6 +130,12 @@ try {
   const splitStatus = await request(endpoint, { method: 'status' });
   assert.ok(splitStatus.clones.some(c => c.name === 'Sift[c]' && c.status === 'launched'), '/split launches the next lettered child');
   assert.equal(requests.length, 3, '/split is a command, not a model prompt');
+  await original.command('prompt', { message: '/test-reload' });
+  await original.command('prompt', { message: '/split' });
+  const refreshed = (await discover({ dir: await runtimeDir(env) })).find(p => p.sessionId === state.sessionId);
+  assert.ok(refreshed, 'reload republishes the source endpoint');
+  assert.ok((await request(refreshed, { method: 'status' })).clones.some(c => c.name === 'Sift[d]' && c.status === 'launched'), 'split still works after real Pi resource reload');
+  assert.equal(requests.length, 3);
   const errors = [...original.history, ...side.history, ...unused.history].filter(e => e.type === 'extension_error' || (e.type === 'extension_ui_request' && e.notifyType === 'error'));
   assert.deepEqual(errors, []);
   console.log('PASS: real Pi busy checkpoint, independent child context/model/effort, durable queued merge, idempotency, editable UI handoff; explicit summary generation and automatic unused-clone exit. Herdr CLI mocked.');

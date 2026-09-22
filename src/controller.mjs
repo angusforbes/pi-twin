@@ -7,8 +7,8 @@ export function sessionKey(id) { return createHash('sha256').update(id).digest('
 
 /** No agent prompts, files, or lifecycle state are mutated by a clone request. */
 export class Controller {
-  constructor({ pi, ctx, dir, launch }) {
-    this.pi = pi; this.ctx = ctx; this.dir = dir; this.launch = launch;
+  constructor({ pi, ctx, dir, launch, resolveName = async () => undefined }) {
+    this.pi = pi; this.ctx = ctx; this.dir = dir; this.launch = launch; this.resolveName = resolveName;
     this.sessionId = ctx.sessionManager.getSessionId();
     this.busySnapshot = undefined;
     this.active = true;
@@ -38,14 +38,17 @@ export class Controller {
     const ctx = this.ctx;
     const busy = !ctx.isIdle();
     if (busy && !this.busySnapshot) throw new Error('Exact pre-task checkpoint unavailable. Wait for this task to settle; do not interrupt it.');
-    const snapshot = busy ? this.busySnapshot : captureSnapshot(ctx.sessionManager);
-    snapshot.name = this.pi.getSessionName();
+    const snapshot = structuredClone(busy ? this.busySnapshot : captureSnapshot(ctx.sessionManager));
+    snapshot.name = this.pi.getSessionName() || snapshot.name;
     const model = ctx.model;
     const thinking = this.pi.getThinkingLevel();
-    const name = reserveName(join(this.dir, 'names'), this.sessionId, snapshot.name);
-    this.clones.put({ id: requestId, status: 'creating', name });
-    let child;
+    // Claim before the asynchronous display-name lookup to keep duplicate clicks idempotent.
+    this.clones.put({ id: requestId, status: 'creating' });
+    let child, name;
     try {
+      if (!snapshot.name) snapshot.name = await this.resolveName();
+      this.assertCurrent();
+      name = reserveName(join(this.dir, 'names'), this.sessionId, snapshot.name);
       child = createClone({ SessionManager, snapshot, sessionDir: dirname(snapshot.sourceFile), name, model, thinking, busy });
       const prepared = { id: requestId, status: 'prepared', ...child, model: { provider: model.provider, id: model.id }, thinking, cwd: ctx.cwd };
       this.clones.put(prepared);
