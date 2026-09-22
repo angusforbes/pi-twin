@@ -4,7 +4,7 @@ import { mkdtempSync, rmSync, readFileSync, existsSync, statSync } from 'node:fs
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { SessionManager } from '@earendil-works/pi-coding-agent';
-import { captureSnapshot, createClone, originOf, hasCloneActivity, bareName, reserveName, transcriptSince, mergeEnvelope, formatMerge, Mailbox } from '../src/model.mjs';
+import { captureSnapshot, createClone, originOf, hasCloneActivity, handoffModel, bareName, reserveName, transcriptSince, mergeEnvelope, formatMerge, Mailbox } from '../src/model.mjs';
 
 function fixture(t) {
   const dir = mkdtempSync(join(tmpdir(), 'live-clone-test-'));
@@ -104,6 +104,17 @@ test('imported material and unknown boundary are not treated as unused', t => {
   assert.equal(hasCloneActivity(child, { childId: 'missing' }), true);
   child.appendCustomMessageEntry('imported-context', 'Important handoff', true, {});
   assert.equal(hasCloneActivity(child, originOf(child)), true);
+});
+test('handoff retains explicit models and skips failed Auto endpoints', () => {
+  const chosen = { provider: 'working', id: 'good' };
+  assert.equal(handoffModel({ model: chosen }), chosen);
+  const ctx = { model: { provider: 'pi-router', id: 'auto' }, sessionManager: { getBranch: () => [
+    { type: 'message', message: { role: 'assistant', provider: 'working', model: 'good', stopReason: 'stop' } },
+    { type: 'message', message: { role: 'assistant', provider: 'broken', model: 'retired', stopReason: 'error' } },
+  ] }, modelRegistry: { find: (provider, id) => provider === 'working' && id === 'good' ? chosen : undefined } };
+  assert.equal(handoffModel(ctx), chosen);
+  ctx.modelRegistry.find = () => undefined;
+  assert.throws(() => handoffModel(ctx), /Select a concrete model/);
 });
 test('split names span a through z, remain reserved, and never wrap', t => {
   const { dir } = fixture(t);

@@ -27,6 +27,16 @@ export function hasCloneActivity(sm, origin) {
   return entries.slice(start + 1).some(e => e.type === 'message' || e.type === 'compaction' || e.type === 'branch_summary' || (e.type === 'custom_message' && e.customType !== 'pi-live-clone-notice'));
 }
 
+/** Extension-generated turns can be routed differently from interactive turns.
+ * Preserve the last successful concrete endpoint for an Auto-routed handoff. */
+export function handoffModel(ctx) {
+  if (ctx.model?.provider !== 'pi-router' || ctx.model?.id !== 'auto') return ctx.model;
+  const message = ctx.sessionManager.getBranch().filter(e => e.type === 'message' && e.message.role === 'assistant' && ['stop', 'toolUse'].includes(e.message.stopReason) && e.message.provider !== 'pi-router').at(-1)?.message;
+  const model = message && ctx.modelRegistry.find(message.provider, message.model);
+  if (!model) throw new Error('No available successful model for the handoff. Select a concrete model before generating a summary, or edit the last reply.');
+  return model;
+}
+
 export function bareName(name) {
   return String(name || 'Agent').replace(/\{#[0-9a-fA-F]{6}\}|\{\}/g, '').replace(/^[^\p{L}\p{N}_]+/u, '').replace(/[\u0000-\u001f\u007f]/g, '').trim().slice(0, 100) || 'Agent';
 }

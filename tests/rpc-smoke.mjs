@@ -105,8 +105,10 @@ try {
   assert.ok((await original.command('get_messages')).messages.some(m => m.customType === 'pi-live-clone-merge' && m.content.includes('UI reviewed handoff')));
   assert.equal(requests.length, 2, 'clone/merge made no model requests');
   side.chooseSummary();
+  await side.command('set_model', { provider: 'pi-router', modelId: 'auto' });
   await side.command('prompt', { message: '/merge' });
   const summaryCall = await modelRequest(2);
+  assert.equal(summaryCall.body.model, 'mock', 'summary uses last successful concrete model, not Auto rerouting');
   assert.ok(JSON.stringify(summaryCall.body).includes('ENTIRE discussion/work since this live-clone split'));
   const editorOpened = new Promise(resolve => {
     const handler = event => { if (event.method === 'editor') { side.events.off('extension_ui_request', handler); resolve(event); } };
@@ -114,6 +116,7 @@ try {
   });
   finish(summaryCall.res, 'Goal: explore a tangent. Decision: adopt the useful conclusion. Unresolved: validate assumptions.');
   const editor = await deadline(editorOpened);
+  assert.equal((await side.command('get_state')).model.provider, 'pi-router', 'Auto selection restored after summary');
   assert.ok(JSON.stringify(editor).includes('Unresolved: validate assumptions.'), 'generated summary must prefill the review');
   assert.equal(requests.length, 3, 'summary is exactly one explicitly requested model turn');
 

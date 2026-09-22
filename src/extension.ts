@@ -11,7 +11,7 @@ export default async function liveClone(pi: ExtensionAPI) {
     herdr: typeof import('./herdr.mjs'); storage: typeof import('./storage.mjs'); ipc: typeof import('./ipc.mjs');
   };
   const { Controller } = core.controller;
-  const { originOf, hasCloneActivity, transcriptSince, mergeEnvelope, MAX_MERGE_BYTES } = core.model;
+  const { originOf, hasCloneActivity, handoffModel, transcriptSince, mergeEnvelope, MAX_MERGE_BYTES } = core.model;
   const { createHerdr } = core.herdr;
   const { stateDir } = core.storage;
   const { runtimeDir, startEndpoint, request, discover } = core.ipc;
@@ -19,7 +19,7 @@ export default async function liveClone(pi: ExtensionAPI) {
   let endpoint: Awaited<ReturnType<typeof startEndpoint>> | undefined;
   let uiBusy = false;
   let generation = 0;
-  let reviewAfterSummary: { generation: number; sessionId: string } | undefined;
+  let reviewAfterSummary: { generation: number; sessionId: string; review: boolean; restore?: (ctx: ExtensionContext) => Promise<void> } | undefined;
   const handoffPrompt = 'Write a useful, self-contained handoff for the original agent covering the ENTIRE discussion/work since this live-clone split, not merely the last reply. Include the goal, conclusions and reasons, decisions, recommendations, unresolved questions, files changed and tests actually run. Distinguish proposals from completed work. Omit empty sections. Do not execute tools or change files for this request. Output the handoff only; the user will review it before anything is sent.';
   const host = createHerdr({ extensionPath: fileURLToPath(import.meta.url) });
   const notify = (ctx: ExtensionContext, text: string, type: 'info' | 'warning' | 'error' = 'info') => { if (ctx.hasUI) ctx.ui.notify(text, type); };
@@ -30,6 +30,29 @@ export default async function liveClone(pi: ExtensionAPI) {
     const found = peers.filter((p: any) => p.sessionId === parentId && p.herdrSocket === host.socketPath);
     if (found.length !== 1) throw new Error('Original session is not connected. Resume it with this extension, then retry the handoff.');
     return found[0];
+  }
+
+  async function startSummary(ctx: ExtensionContext, review: boolean) {
+    const mine = generation;
+    const selected = handoffModel(ctx);
+    const previous = ctx.model;
+    const previousThinking = pi.getThinkingLevel();
+    let restore: ((ctx: ExtensionContext) => Promise<void>) | undefined;
+    if (selected && previous && (selected.provider !== previous.provider || selected.id !== previous.id)) {
+      if (!await pi.setModel(selected)) throw new Error('The last successful model is unavailable; nothing was merged.');
+      const pinnedThinking = pi.getThinkingLevel();
+      restore = async current => {
+        // Never undo a user's intervening model/effort selection or session switch.
+        if (generation !== mine || current.model?.provider !== selected.provider || current.model?.id !== selected.id) return;
+        const restoreThinking = pi.getThinkingLevel() === pinnedThinking;
+        if (await pi.setModel(previous) && restoreThinking) pi.setThinkingLevel(previousThinking);
+      };
+    }
+    if (mine !== generation) throw new Error('Session changed; summary cancelled');
+    reviewAfterSummary = { generation: mine, sessionId: ctx.sessionManager.getSessionId(), review, restore };
+    try { pi.sendUserMessage(handoffPrompt); }
+    catch (e) { reviewAfterSummary = undefined; await restore?.(controller?.ctx ?? ctx); throw e; }
+    notify(ctx, `Generating handoff with ${selected?.provider}/${selected?.id}.${review ? ' Review opens when it finishes; nothing is sent automatically.' : ''}`);
   }
 
   async function mergeUI(ctx: ExtensionContext, args = '') {
@@ -50,10 +73,7 @@ export default async function liveClone(pi: ExtensionAPI) {
       if (!mode) return;
       if (generation !== myGeneration || !ctx.isIdle()) throw new Error('Session changed or became busy; handoff cancelled');
       if (mode.startsWith('Generate')) {
-        reviewAfterSummary = { generation: myGeneration, sessionId: ctx.sessionManager.getSessionId() };
-        try { pi.sendUserMessage(handoffPrompt); }
-        catch (e) { reviewAfterSummary = undefined; throw e; }
-        notify(ctx, 'Generating a handoff from the discussion. The review editor will open when it finishes; nothing is sent automatically.');
+        await startSummary(ctx, true);
         return;
       }
       let text: string;
@@ -128,12 +148,15 @@ export default async function liveClone(pi: ExtensionAPI) {
     } catch (e) { notify(ctx, `Live clone: ${errorText(e)}`, 'error'); }
   });
   pi.on('before_agent_start', (_event, ctx) => { controller?.beforeRun(ctx); });
-  pi.on('agent_settled', (_event, ctx) => {
+  pi.on('agent_settled', async (_event, ctx) => {
     try { controller?.settle(ctx); }
     catch (e) { notify(ctx, `Handoff retained for recovery: ${errorText(e)}`, 'error'); }
     const pending = reviewAfterSummary;
     reviewAfterSummary = undefined;
     if (pending && pending.generation === generation && pending.sessionId === ctx.sessionManager.getSessionId()) {
+      try { await pending.restore?.(ctx); }
+      catch (e) { notify(ctx, `Could not restore model selection: ${errorText(e)}`, 'warning'); }
+      if (!pending.review || pending.generation !== generation) return;
       const reply = ctx.sessionManager.getBranch().filter((e: any) => e.type === 'message' && e.message.role === 'assistant').at(-1) as any;
       if (reply?.message.stopReason !== 'stop') {
         notify(ctx, 'Handoff generation did not complete normally. Nothing was merged; retry /merge when ready.', 'warning');
@@ -176,7 +199,8 @@ export default async function liveClone(pi: ExtensionAPI) {
     handler: async (_args, ctx) => {
       if (!originOf(ctx.sessionManager)) return notify(ctx, 'This is not a live clone.', 'warning');
       if (!ctx.isIdle()) return notify(ctx, 'Wait for the clone to finish first.', 'warning');
-      pi.sendUserMessage(handoffPrompt);
+      try { await startSummary(ctx, false); }
+      catch (e) { notify(ctx, errorText(e), 'error'); }
     },
   });
   pi.registerCommand('clone-merge-status', {

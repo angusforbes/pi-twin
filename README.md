@@ -42,6 +42,8 @@ Nothing in these instructions requires restarting Herdr. **Installing a patched 
 
 `/merge` offers **Generate handoff summary** (one explicitly requested model turn), **Edit last reply (no summarization)**, or **Full text transcript**. Generation covers the discussion since cloning and opens the review editor when finished. Nothing is sent until you review it and select how the original should use it. `/clone-handoff` remains available as a separate draft-only command.
 
+When Pi Model Auto (`pi-router/auto`) is selected, handoff generation temporarily uses the last successful concrete model, instead of allowing an extension-generated prompt to route to a different endpoint. The Auto selection is restored afterward unless you change models yourself. Explicit model selections are left alone.
+
 If a clone has had **no interaction since creation**, `/merge` simply exits that clone without a merge or confirmation dialog. Its saved session remains. Inherited history, the clone notice, and settings changes do not count as interaction; new messages, imported context, and discussion on abandoned branches do. Busy clones are never automatically exited.
 
 During merge review choose **background information only** (default) or explicitly ask the original to act after its current task. A busy original receives nothing mid-task: the handoff lives in a durable queue until full `agent_settled`.
