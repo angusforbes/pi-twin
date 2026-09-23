@@ -10,7 +10,7 @@ import { loadCore } from '../src/load-core.mjs';
 test('reload refreshes controller dependencies despite an already-cached native ESM model', async t => {
   const dir = mkdtempSync(join(tmpdir(), 'split-reload-'));
   t.after(() => rmSync(dir, { recursive: true, force: true }));
-  for (const file of ['controller.mjs', 'model.mjs', 'herdr.mjs', 'storage.mjs', 'ipc.mjs']) {
+  for (const file of ['controller.mjs', 'model.mjs', 'herdr.mjs', 'storage.mjs', 'ipc.mjs', 'wait.mjs']) {
     writeFileSync(join(dir, file), readFileSync(new URL('../src/' + file, import.meta.url)));
   }
   const path = join(dir, 'model.mjs');

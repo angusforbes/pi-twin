@@ -9,7 +9,8 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { discover, runtimeDir, request } from '../src/ipc.mjs';
-import { mergeEnvelope } from '../src/model.mjs';
+import { mergeEnvelope, captureHistoricalSnapshot, createClone } from '../src/model.mjs';
+import { SessionManager } from '@earendil-works/pi-coding-agent';
 
 const root = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const temp = mkdtempSync(join(tmpdir(), 'lc-rpc-'));
@@ -21,7 +22,8 @@ const server = createServer(async (req, res) => {
   requests.push({ res, body: JSON.parse(body) }); signals.emit('request');
 });
 const deadline = (promise, ms = 20000) => {
-  let timer; return Promise.race([promise, new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('Smoke test deadline exceeded')), ms); })]).finally(() => clearTimeout(timer));
+  const error = new Error('Smoke test deadline exceeded');
+  let timer; return Promise.race([promise, new Promise((_, reject) => { timer = setTimeout(() => reject(error), ms); })]).finally(() => clearTimeout(timer));
 };
 async function modelRequest(index) {
   while (requests.length <= index) await deadline(once(signals, 'request'));
@@ -36,7 +38,7 @@ function finish(res, text) {
 function start(env, extra = []) {
   const args = ['--mode', 'rpc', '--no-extensions', '--no-skills', '--no-prompt-templates', '--provider', 'live-clone-test', '--model', 'mock', '--thinking', 'high', '-e', join(root, 'tests/fixtures/mock-provider.ts'), '-e', join(root, 'src/extension.ts'), ...extra];
   const child = spawn(process.env.PI_BIN || 'pi', args, { cwd: temp, env, stdio: ['pipe', 'pipe', 'pipe'] }); processes.push(child);
-  let generateSummary = false;
+  let generateSummary = false, allowSubmit = false;
   const events = new EventEmitter(); const history = []; const pending = new Map(); let buf = '', stderr = '';
   child.stderr.on('data', x => { stderr += x; });
   const send = x => child.stdin.write(JSON.stringify(x) + '\n');
@@ -48,7 +50,13 @@ function start(env, extra = []) {
       history.push(event); events.emit(event.type, event);
       if (event.type === 'response' && pending.has(event.id)) { pending.get(event.id)(event); pending.delete(event.id); }
       if (event.type === 'extension_ui_request') {
-        if (event.method === 'select') send({ type: 'extension_ui_response', id: event.id, value: !generateSummary && event.options.some(x => x.startsWith('Generate handoff')) ? event.options[1] : event.options[0] });
+        // RPC checks deferred shutdown on the next command boundary; unlike the
+        // TUI it has no continuously running input loop after an async dialog.
+        if (event.method === 'notify' && event.message?.includes('Closing twin;')) send({ type: 'get_state', id: 'shutdown-boundary' });
+        if (event.method === 'select' && !event.title.startsWith('Waiting for ')) {
+          if (event.title === 'How should the original use this?' && !allowSubmit) send({ type: 'extension_ui_response', id: event.id, cancelled: true });
+          else send({ type: 'extension_ui_response', id: event.id, value: !generateSummary && event.options.some(x => x.startsWith('Generate handoff')) ? event.options[1] : event.options[0] });
+        }
         if (event.method === 'editor') send({ type: 'extension_ui_response', id: event.id, value: 'UI reviewed handoff' });
         if (event.method === 'confirm') send({ type: 'extension_ui_response', id: event.id, confirmed: false });
       }
@@ -62,7 +70,7 @@ function start(env, extra = []) {
     let r; try { r = await deadline(response); } catch (e) { throw new Error(`${e.message}; Pi stderr=${stderr}; last events=${JSON.stringify(history.slice(-5))}`); }
     assert.equal(r.success, true, JSON.stringify(r)); return r.data;
   }
-  return { child, command, events, history, chooseSummary: () => { generateSummary = true; }, stderr: () => stderr };
+  return { child, command, events, history, chooseSummary: () => { generateSummary = true; }, allowMerge: () => { generateSummary = false; allowSubmit = true; }, stderr: () => stderr };
 }
 try {
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
@@ -100,13 +108,13 @@ try {
   const mergeIndex = messages.findIndex(m => m.customType === 'pi-twin-merge');
   assert.ok(mergeIndex > resultIndex, 'merge follows completed original task');
   assert.equal((await request(endpoint, { method: 'merge', envelope: merge })).status, 'delivered');
-  await side.command('prompt', { message: '/merge' });
+  await side.command('prompt', { message: '/twin-merge' });
   assert.ok(side.history.some(e => e.type === 'extension_ui_request' && e.method === 'editor'));
-  assert.ok((await original.command('get_messages')).messages.some(m => m.customType === 'pi-twin-merge' && m.content.includes('UI reviewed handoff')));
-  assert.equal(requests.length, 2, 'clone/merge made no model requests');
+  assert.ok(!(await original.command('get_messages')).messages.some(m => m.customType === 'pi-twin-merge' && m.content.includes('UI reviewed handoff')), 'cancelled review sends nothing');
+  assert.equal(requests.length, 2, 'clone/twin-merge made no model requests');
   side.chooseSummary();
   await side.command('set_model', { provider: 'pi-router', modelId: 'auto' });
-  await side.command('prompt', { message: '/merge' });
+  await side.command('prompt', { message: '/twin-merge' });
   const summaryCall = await modelRequest(2);
   assert.equal(summaryCall.body.model, 'mock', 'summary uses last successful concrete model, not Auto rerouting');
   assert.ok(JSON.stringify(summaryCall.body).includes('ENTIRE discussion/work since this live-clone split'));
@@ -124,22 +132,58 @@ try {
   const unused = start({ ...env, HERDR_PANE_ID: 'wTest:p3' }, ['--session', unusedClone.file]);
   await unused.command('get_state');
   const exited = once(unused.child, 'exit');
-  unused.child.stdin.write(JSON.stringify({ type: 'prompt', id: 'empty-merge', message: '/merge' }) + '\n');
+  unused.child.stdin.write(JSON.stringify({ type: 'prompt', id: 'empty-merge', message: '/twin-merge' }) + '\n');
   await deadline(exited);
   assert.ok(!unused.history.some(e => e.type === 'extension_ui_request' && ['select', 'editor', 'confirm'].includes(e.method)), 'unused clone exits without merge dialogs');
   assert.ok(readFileSync(unusedClone.file, 'utf8').includes(unusedClone.childId), 'saved conversation retained');
   assert.equal(requests.length, 3, 'empty merge must not call a model');
-  await original.command('prompt', { message: '/split' });
+  await original.command('prompt', { message: '/twin-split' });
   const splitStatus = await request(endpoint, { method: 'status' });
-  assert.ok(splitStatus.clones.some(c => c.name === 'Sift[c]' && c.status === 'launched'), '/split launches the next lettered child');
-  assert.equal(requests.length, 3, '/split is a command, not a model prompt');
+  assert.ok(splitStatus.clones.some(c => c.name === 'Sift[c]' && c.status === 'launched'), '/twin-split launches the next lettered child');
+  assert.equal(requests.length, 3, '/twin-split is a command, not a model prompt');
   await original.command('prompt', { message: '/test-reload' });
-  await original.command('prompt', { message: '/split' });
+  await original.command('prompt', { message: '/twin-split' });
   const refreshed = (await discover({ dir: await runtimeDir(env) })).find(p => p.sessionId === state.sessionId);
   assert.ok(refreshed, 'reload republishes the source endpoint');
   assert.ok((await request(refreshed, { method: 'status' })).clones.some(c => c.name === 'Sift[d]' && c.status === 'launched'), 'split still works after real Pi resource reload');
   assert.equal(requests.length, 3);
-  const errors = [...original.history, ...side.history, ...unused.history].filter(e => e.type === 'extension_error' || (e.type === 'extension_ui_request' && e.notifyType === 'error'));
+  // Real queued wait: original stays working, twin stays alive, receipt causes exit.
+  await original.command('prompt', { message: 'Work while the twin queues its handoff' });
+  const busyCall = await modelRequest(3);
+  side.allowMerge();
+  const waiting = new Promise(resolve => {
+    const listener = e => { if (e.method === 'select' && e.title.startsWith('Waiting for ')) { side.events.off('extension_ui_request', listener); resolve(); } };
+    side.events.on('extension_ui_request', listener);
+  });
+  const sideExit = once(side.child, 'exit');
+  side.child.stdin.write(JSON.stringify({ type: 'prompt', id: 'queued-ui-merge', message: '/twin-merge' }) + '\n');
+  await deadline(waiting);
+  assert.equal(side.child.exitCode, null);
+  assert.equal((await original.command('get_state')).isStreaming, true);
+  const settledAgain = once(original.events, 'agent_settled');
+  finish(busyCall.res, 'Parent finished without interruption'); await deadline(settledAgain);
+  try { await deadline(sideExit); }
+  catch (e) { throw new Error(`${e.message}; twin events=${JSON.stringify(side.history.slice(-10))}`); }
+  assert.ok((await original.command('get_messages')).messages.some(m => m.customType === 'pi-twin-merge' && m.content.includes('UI reviewed handoff')));
+  assert.ok(!side.history.some(e => e.type === 'extension_ui_request' && e.method === 'confirm'), 'successful receipt needs no extra close confirmation');
+  // Reopening saved history and checking the imported handoff also closes immediately.
+  const resumed = start({ ...env, HERDR_PANE_ID: 'wTest:p2' }, ['--session', cloned.file]);
+  await resumed.command('get_state');
+  const resumedExit = once(resumed.child, 'exit');
+  resumed.child.stdin.write(JSON.stringify({ type: 'prompt', id: 'receipt-check', message: '/twin-merge-status' }) + '\n');
+  await deadline(resumedExit);
+  assert.equal(requests.length, 4, 'waiting and status checking make no model calls');
+  const sourceManager = SessionManager.open((await original.command('get_state')).sessionFile);
+  const forkPoint = sourceManager.getEntries().find(e => e.type === 'message' && e.message.role === 'user');
+  const fork = createClone({ SessionManager, snapshot: captureHistoricalSnapshot(sourceManager, forkPoint.id, { kind: 'fork' }), sessionDir: join(temp, 'sessions'), name: 'Independent fork', model: { provider: 'live-clone-test', id: 'mock' }, thinking: 'high', busy: false });
+  const forkProcess = start({ ...env, HERDR_PANE_ID: 'wTest:p4' }, ['--session', fork.file]);
+  assert.equal((await forkProcess.command('get_state')).isStreaming, false);
+  assert.ok(forkProcess.history.some(e => e.method === 'set_editor_text' && e.text === fork.lineage.history.draft), 'fork starts with selected prompt in editor, unsent');
+  await forkProcess.command('prompt', { message: '/twin-merge' });
+  assert.equal(forkProcess.child.exitCode, null, 'permanent fork is not an unused temporary twin');
+  assert.ok(forkProcess.history.some(e => e.method === 'notify' && e.message.includes('Permanent fork') || e.method === 'notify' && e.message.includes('permanent fork')));
+  assert.equal(requests.length, 4, 'fork startup and rejected merge must not replay its draft');
+  const errors = [...original.history, ...side.history, ...unused.history, ...resumed.history, ...forkProcess.history].filter(e => e.type === 'extension_error' || (e.type === 'extension_ui_request' && e.notifyType === 'error'));
   assert.deepEqual(errors, []);
   console.log('PASS: real Pi busy checkpoint, independent child context/model/effort, durable queued merge, idempotency, editable UI handoff; explicit summary generation and automatic unused-clone exit. Herdr CLI mocked.');
 } finally {

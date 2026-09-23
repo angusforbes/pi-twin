@@ -50,14 +50,15 @@ export function createHerdr({ env = process.env, run = exec, extensionPath } = {
       await call(args);
       return { tabId, paneId: newPane };
     },
-    /** @param {{ name?: string, sessionId?: string, clone?: boolean, enabled?: boolean }} [options] */
-    async publish({ name, sessionId, clone = false, enabled = true } = {}) {
+    /** @param {{ name?: string, sessionId?: string, clone?: boolean, mergeable?: boolean, enabled?: boolean }} [options] */
+    async publish({ name, sessionId, clone = false, mergeable = true, enabled = true } = {}) {
       if (!paneId) return;
       const args = ['pane', 'report-metadata', paneId, '--source', 'pi-twin', '--applies-to-source', 'herdr:pi'];
       if (enabled) args.push('--token', 'twin=1'); else args.push('--clear-token', 'twin', '--clear-token', 'twin_parent', '--clear-token', 'twin_session', '--clear-token', 'name');
       if (enabled && sessionId) args.push('--token', `twin_session=${sessionId}`);
-      if (clone && enabled) args.push('--token', 'twin_parent=1');
-      else if (enabled) args.push('--clear-token', 'twin_parent', '--clear-token', 'name');
+      if (clone && mergeable && enabled) args.push('--token', 'twin_parent=1');
+      else if (enabled) args.push('--clear-token', 'twin_parent');
+      if (!clone && enabled) args.push('--clear-token', 'name');
       // Forked sessions may be ignored by other naming integrations. Publish a
       // display token instead of agent.rename, whose aliases forbid uppercase.
       if (clone && name && enabled) args.push('--token', `name=${name}`);

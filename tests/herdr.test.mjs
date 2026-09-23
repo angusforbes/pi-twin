@@ -25,6 +25,14 @@ test('publish uses explicit capability tokens and only renames own clone pane', 
   assert.equal(calls.length, 1);
   await host.publish({ enabled: false }); assert.ok(calls[1].includes('--clear-token'));
 });
+test('permanent fork keeps its name and split capability but hides merge capability', async () => {
+  const calls = [];
+  const host = createHerdr({ env: { HERDR_PANE_ID: 'w1:p1' }, run: async (_cmd, args) => { calls.push(args); return { stdout: '{}' }; } });
+  await host.publish({ name: 'Thumper[a]', sessionId: 'fork-id', clone: true, mergeable: false });
+  assert.ok(calls[0].includes('twin=1'));
+  assert.ok(calls[0].includes('name=Thumper[a]'));
+  assert.ok(!calls[0].includes('twin_parent=1'));
+});
 test('host errors are explicit, no shell fallback', () => {
   assert.throws(() => parseResponse('nonsense'), /non-JSON/);
   assert.throws(() => parseResponse('{"error":{"message":"not found"}}'), /not found/);

@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { join, dirname } from 'node:path';
 import { SessionManager } from '@earendil-works/pi-coding-agent';
-import { captureSnapshot, createClone, reserveName, originOf, Mailbox, MAX_MERGE_BYTES, formatMerge } from './model.mjs';
+import { captureSnapshot, captureHistoricalSnapshot, createClone, reserveName, originOf, Mailbox, MAX_MERGE_BYTES, formatMerge } from './model.mjs';
 
 export function sessionKey(id) { return createHash('sha256').update(id).digest('hex'); }
 
@@ -31,14 +31,14 @@ export class Controller {
     this.assertCurrent();
     return { sessionId: this.sessionId, name: this.pi.getSessionName(), idle: this.ctx.isIdle(), origin: originOf(this.ctx.sessionManager), pendingMerges: this.merges.list().filter(m => m.status !== 'delivered').map(m => m.id), clones: this.clones.list().map(c => ({ id: c.id, name: c.name, childId: c.childId, status: c.status, file: c.file, host: c.host })) };
   }
-  async clone(requestId) {
+  async clone(requestId, selection) {
     this.assertCurrent();
     const old = this.clones.get(requestId);
     if (old) return old;
     const ctx = this.ctx;
-    const busy = !ctx.isIdle();
+    const busy = !selection && !ctx.isIdle();
     if (busy && !this.busySnapshot) throw new Error('Exact pre-task checkpoint unavailable. Wait for this task to settle; do not interrupt it.');
-    const snapshot = structuredClone(busy ? this.busySnapshot : captureSnapshot(ctx.sessionManager));
+    const snapshot = selection ? captureHistoricalSnapshot(ctx.sessionManager, selection.entryId, selection) : structuredClone(busy ? this.busySnapshot : captureSnapshot(ctx.sessionManager));
     snapshot.name = this.pi.getSessionName() || snapshot.name;
     const model = ctx.model;
     const thinking = this.pi.getThinkingLevel();
@@ -68,6 +68,8 @@ export class Controller {
     // Verify lineage from a retained clone record owned by this source, not caller claims.
     const record = this.clones.list().find(r => r.childId === m.childId && r.file === m.sourceFile);
     if (!record || record.lineage?.parentId !== this.sessionId) throw new Error('Unknown clone lineage');
+    if (record.lineage.mergeAllowed === false) throw new Error('Permanent forks do not merge back');
+    if (!!m.historical !== (record.lineage.kind === 'tree') || m.boundaryId !== record.lineage.boundaryId) throw new Error('Handoff history provenance does not match the saved split');
     const old = this.merges.get(m.id);
     if (old && JSON.stringify(old.envelope) !== JSON.stringify(m)) throw new Error('Merge ID already used for different content');
     if (!old) this.merges.put({ id: m.id, status: 'queued', envelope: m });

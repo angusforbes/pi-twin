@@ -6,6 +6,6 @@ The extension commands work without this patch. With it, eligible single-pane ta
 
 Before installation, review the patch against your actual Herdr checkout, back up the existing binary, build successfully, and follow Herdr's supported live-handoff procedure. Do not stop a shared server to install it. Existing Pi sessions need `/reload` after installing/updating the extension.
 
-Verification on the implementation base: full Linux Rust suite passed before the final small follow-up changes; subsequent targeted input, launcher, and headless-dispatch tests and release builds passed. Windows verification was blocked by an unavailable rustup toolchain. Real Pi/Herdr split tests and user-operated menu/merge checks passed. This is a locally tested integration patch, not an upstream release or accepted upstream contribution.
+Verification on the implementation base: full Linux Rust suite passed before the final small follow-up changes; subsequent targeted input, launcher, and headless-dispatch tests and release builds passed. Windows verification was blocked by an unavailable rustup toolchain. Real Pi/Herdr split tests and user-operated menu/twin-merge checks passed. This is a locally tested integration patch, not an upstream release or accepted upstream contribution.
 
 A local machine's separate tab-name synchronization helpers must preserve trailing square brackets. A punctuation-stripping helper can turn `Thumper[a]` into `Thumper[a` even when the extension publishes the correct name. This is outside the extension and menu patch.

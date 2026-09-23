@@ -8,7 +8,7 @@ Experimental Pi package, initially for **Herdr on Linux/macOS**. Local developme
 
 ## Behavior
 
-- `/split` opens and focuses a **new Herdr tab**. The original process and conversation stay where they are.
+- `/twin-split` opens and focuses a **new Herdr tab**. The original process and conversation stay where they are.
 - **Idle source:** copy the current active conversation branch.
 - **Busy source:** copy the checkpoint before the prompt initiating the current run. Retain that boundary across retries and queued continuations until Pi fully settles. If the extension did not observe a safe boundary, fail rather than guess.
 - Inherit the **current provider/model, effective thinking effort, and working directory**. Context includes the selected branch's compaction checkpoints. Model/effort can diverge independently afterward.
@@ -22,7 +22,7 @@ Pi's built-in `/clone` remains unchanged. This package uses Pi's native branch e
 
 `pi install git:github.com/angusforbes/pi-twin`
 
-Then run `/reload` in an idle Pi session inside Herdr. Use `/split` and `/merge`. Native **Agent Split / Agent Merge** tab-menu entries require the separate [Herdr integration patch](integrations/herdr/README.md); installing this package alone does not modify Herdr.
+Then run `/reload` in an idle Pi session inside Herdr. Use `/twin-split` and `/twin-merge`. Native **Agent Split / Agent Merge** tab-menu entries require the separate [Herdr integration patch](integrations/herdr/README.md); installing this package alone does not modify Herdr.
 
 ## Try locally
 
@@ -42,25 +42,39 @@ Nothing in these instructions requires restarting Herdr. **Installing a patched 
 
 | Command | Meaning |
 |---|---|
-| `/split` | New live clone tab; original remains active |
-| `/clone-handoff` | Ask this clone to draft a concise handoff; explicitly runs one ordinary agent request |
-| `/merge` | Review/edit a summary or text transcript and send it to the original |
-| `/merge --full` | Review the divergent text transcript |
-| `/clone-merge-status` | Check latest submitted handoff; optionally close after confirmed import |
+| `/twin-split` | New live twin tab from current context; original remains active |
+| `/twin-tree` | Native history picker → historical twin; can merge findings into the parent's current branch |
+| `/twin-fork` | Native user-message picker → permanent fork; selected prompt is prefilled but unsent; no merge-back |
+| `/twin-handoff` | Ask this clone to draft a concise handoff; explicitly runs one ordinary agent request |
+| `/twin-merge` | Review/edit a summary or text transcript and send it to the original |
+| `/twin-merge --full` | Review the divergent text transcript |
+| `/twin-merge-status` | Check/wait for the latest handoff; close after confirmed import if the twin is unchanged |
 
-`/merge` offers **Generate handoff summary** (one explicitly requested model turn), **Edit last reply (no summarization)**, or **Full text transcript**. Generation covers the discussion since cloning and opens the review editor when finished. Nothing is sent until you review it and select how the original should use it. `/clone-handoff` remains available as a separate draft-only command.
+`/twin-merge` offers **Generate handoff summary** (one explicitly requested model turn), **Edit last reply (no summarization)**, or **Full text transcript**. Generation covers the discussion since cloning and opens the review editor when finished. Nothing is sent until you review it and select how the original should use it. `/twin-handoff` remains available as a separate draft-only command.
 
 When Pi Model Auto (`pi-router/auto`) is selected, handoff generation temporarily uses the last successful concrete model, instead of allowing an extension-generated prompt to route to a different endpoint. The Auto selection is restored afterward unless you change models yourself. Explicit model selections are left alone.
 
-If a clone has had **no interaction since creation**, `/merge` simply exits that clone without a merge or confirmation dialog. Its saved session remains. Inherited history, the clone notice, and settings changes do not count as interaction; new messages, imported context, and discussion on abandoned branches do. Busy clones are never automatically exited.
+If a clone has had **no interaction since creation**, `/twin-merge` simply exits that clone without a merge or confirmation dialog. Its saved session remains. Inherited history, the clone notice, and settings changes do not count as interaction; new messages, imported context, and discussion on abandoned branches do. Busy clones are never automatically exited.
 
 During merge review choose **background information only** (default) or explicitly ask the original to act after its current task. A busy original receives nothing mid-task: the handoff lives in a durable queue until full `agent_settled`.
 
 The handoff is one attributed custom message, not replayed assistant/tool history. Duplicate submissions of the same reviewed content are idempotent. The original's model settings are not overwritten. Files are not copied or merged: with a shared directory, edits already happened.
 
-Close is offered only after confirmed import; queued or ambiguous outcomes keep the clone open. Saved session files are never deleted. A queued handoff can be checked later with `/clone-merge-status`.
+After confirmed import, the twin exits automatically; saved session files are never deleted. A queued handoff opens a cancellable waiting dialog while the parent continues its task uninterrupted. **Keep twin open** or Escape stops waiting, not the queued delivery. Use `/twin-merge-status` later to resume waiting and close after receipt. Connection failures, unknown receipts, session switches, or new activity in the twin prevent automatic closing. Receipt confirms context import—not completion of any requested follow-up work.
 
 Full transcript mode means **text transcript**: private thinking is not included, images are explicitly marked omitted and remain in the saved session. A 96 KiB content cap fails visibly rather than silently truncating; use a summary for large conversations.
+
+## Historical twins and permanent forks
+
+`/twin-tree` uses Pi's native history picker without navigating the original session. Select a point, confirm, and a new tab opens with context through that point. For a user message, choose **before the prompt** (prefill its text without sending) or **through the message** (context only; no automatic execution). Unsafe tool-call midpoints are refused; choose a completed point instead.
+
+A historical twin uses the ordinary reviewed `/twin-merge` flow. Its handoff includes the fork boundary and an explicit **message from earlier context** warning. It is appended to the parent's current branch when the parent settles—not inserted into the past or used to rewind history.
+
+`/twin-fork` uses Pi's native user-message picker. It copies context before the selected prompt and puts that prompt's text in the new editor, unsent. This is a permanent independent conversation: provenance is retained, but **Agent Merge** is hidden and merge-back is rejected. It initially receives the next lettered name; use `/name` to give it a distinct identity if desired. A permanent fork is not automatically discarded just because its initial prompt is still unsent.
+
+Image/file attachments cannot be prefilled into the editor: a warning asks you to reattach them, and the original attachments remain in the saved source session. Draft restoration does not overwrite a nonempty editor and is recorded to avoid repetition on reload.
+
+Both pickers require interactive terminal Pi. Native `/tree` and `/fork` are unchanged. **None of these commands rewinds or isolates files**: every twin/fork sees the current shared working directory.
 
 ## External control / tab-menu adapter
 
@@ -74,7 +88,7 @@ The extension exposes a private, local Unix socket while the session is running.
 
 Use `--session SESSION_ID` instead of `--pane` for stable targeting. `--socket HERDR_SOCKET` disambiguates Herdr instances. `--id REQUEST_ID` makes an external clone request safely identifiable; an ambiguous launch is retained, not automatically retried.
 
-The extension advertises `twin=1`, `twin_session=<session ID>`, and (on clones) `twin_parent=1` pane metadata. Menu adapters pass `--expected-session ID` to refuse an action if that pane switched sessions after the menu opened. The optional Herdr patch adds native context-menu actions using those capabilities. Unpatched Herdr still works through `/split` and the CLI. Never use `herdr agent prompt` as a substitute for this private control channel on a busy source.
+The extension advertises `twin=1`, `twin_session=<session ID>`, and (on clones) `twin_parent=1` pane metadata. Menu adapters pass `--expected-session ID` to refuse an action if that pane switched sessions after the menu opened. The optional Herdr patch adds native context-menu actions using those capabilities. Unpatched Herdr still works through `/twin-split` and the CLI. Never use `herdr agent prompt` as a substitute for this private control channel on a busy source.
 
 ## Storage and security
 
@@ -112,6 +126,7 @@ The concept already exists in useful forms:
 - [@pi-kaush/pi-split-session](https://www.npmjs.com/package/@pi-kaush/pi-split-session): Herdr/Ghostty side session with handoff import.
 - [pi-terminal-branch](https://github.com/vadimtrifonov/pi-terminal-branch): terminal pane/tab/window branches.
 - [pi-session-merge](https://pi.dev/packages/pi-session-merge): conversation summary imports.
+- [pi-herdr-agents](https://www.npmjs.com/package/pi-herdr-agents): `/btw` opens one replaceable background side-question session; `/btw-close` closes it from the parent. This is extension-provided, not built into Pi, and does not provide pi-twin's reviewed merge-back flow.
 
 This implementation reuses **Pi's native session API**, not their source code. Its focus is explicit pre-task snapshots, clone naming, external busy-safe control, native Herdr menu integration, and durable noninterrupting merge-back. Those projects are worth trying if their existing workflow meets your needs.
 

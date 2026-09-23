@@ -1,4 +1,4 @@
-# Live clone — implementation contract
+# pi-twin — implementation contract
 
 Requested by Angus, 2026-09-21. Development in a standalone Pi package, with a small optional Herdr adapter. Do not replace Pi's built-in `/clone` or restart the shared Herdr server without approval.
 
@@ -8,16 +8,18 @@ Requested by Angus, 2026-09-21. Development in a standalone Pi package, with a s
 - Original remains alive and untouched. Independent clone opens in a new tab, focused and waiting for a prompt.
 - Idle: copy active branch at current leaf. Busy: copy at the checkpoint immediately before the prompt that initiated the current task. Do not import streaming partial responses or trigger/replay that task.
 - Inherit current provider/model and effective thinking effort even if these differ from settings recorded at the historical checkpoint. Same cwd and normal Pi resources. This is conversation cloning, not cloning a live process or a filesystem snapshot.
-- Names: Sift_clone1, Sift_clone2, etc. Preserve durable source-session identity and branch boundary, independently of display names/pane moves.
+- Names: Sift[a] through Sift[z]; permanent forks may adopt a distinct name. Preserve durable source-session identity and branch boundary, independently of display names/pane moves.
 - Shared-files warning, no forced sandbox/worktree. No claims of file isolation.
 - Merge back: editable, clearly attributed handoff since divergence; optional transcript. Never splice raw tool-call/assistant entries into a running original. Background-information default; explicitly opt into asking the original to act.
 - If parent busy, durable pending merge delivered only after full settle; no interruption. Acknowledgments distinguish queued from actually imported. Retry idempotently.
-- Retain saved sessions. Optional close only after confirmed import, never on a request timeout. Source still running and files unchanged by merge.
+- Retain saved sessions. Automatically exit an unchanged idle twin after confirmed import, never on a request timeout. Queued merges wait with cancellation; cancelling the wait does not cancel delivery. Source remains running and files are unchanged by merge.
+- Commands: `/twin-split`, `/twin-tree`, `/twin-fork`, `/twin-merge`, `/twin-handoff`, `/twin-merge-status`.
+- Historical tree twins can return reviewed findings to the parent's current branch, with an outdated-context warning. Permanent forks start before a selected user message, prefill its text unsent, retain provenance, and cannot merge back. Native pickers do not mutate the source.
 
 ## Engineering boundaries
 
 - Community-shareable package manifest, README, license decision, tests, no personal paths/credentials in tracked files.
-- Host adapter separate from Pi session cloning/lineage/merge logic. Initial host Herdr; no universal-terminal claims.
+- Host adapter separate from Pi session cloning/lineage/twin-merge logic. Initial host Herdr; no universal-terminal claims.
 - Capability-scoped local IPC, private runtime directory, bounded requests, target session identity checks, cleanup on shutdown/reload. Never inject keystrokes into a busy Pi editor.
 - Do not switch/fork the source's active SessionManager. Clone with an independent manager/snapshot using supported session APIs and test against installed Pi.
 - Original agent lifecycle hooks identify a safe pre-run snapshot. Preserve checkpoint across retries and auto-compaction; fail closed when exact checkpoint cannot be established.

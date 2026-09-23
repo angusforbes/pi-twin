@@ -15,5 +15,6 @@ export async function loadCore(SessionManager, base = import.meta.url) {
   const herdr = loader('./herdr.mjs');
   const storage = loader('./storage.mjs');
   const ipc = loader('./ipc.mjs');
-  return { controller, model, herdr, storage, ipc };
+  const wait = loader('./wait.mjs');
+  return { controller, model, herdr, storage, ipc, wait };
 }
