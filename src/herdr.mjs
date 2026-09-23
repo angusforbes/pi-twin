@@ -25,6 +25,16 @@ export function createHerdr({ env = process.env, run = exec, extensionPath } = {
       const info = await call(['agent', 'get', paneId]);
       return info.agent?.tokens?.name;
     },
+    async closeSelf(sessionId, isCurrent) {
+      if (!paneId) return false;
+      const info = await call(['agent', 'get', paneId]);
+      if (info.agent?.tokens?.twin_session !== sessionId) throw new Error('Cannot verify this twin’s pane identity; kept open.');
+      if (!isCurrent()) throw new Error('Twin changed before closing; kept open.');
+      // Closing only our pane removes its tab when it is the last pane, but
+      // cannot destroy neighbouring panes if the user has since split the tab.
+      await call(['pane', 'close', paneId]);
+      return true;
+    },
     async launch(child) {
       if (!paneId || !workspace) throw new Error('Automatic tab launch currently requires Herdr');
       const createArgs = ['tab', 'create', '--workspace', workspace, '--cwd', child.cwd, '--label', child.name, '--focus'];

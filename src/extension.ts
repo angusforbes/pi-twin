@@ -9,7 +9,7 @@ import { pickHistory } from './history-picker.ts';
 export default async function liveClone(pi: ExtensionAPI) {
   const core = await loadCore(SessionManager) as {
     controller: typeof import('./controller.mjs'); model: typeof import('./model.mjs');
-    herdr: typeof import('./herdr.mjs'); storage: typeof import('./storage.mjs'); ipc: typeof import('./ipc.mjs'); wait: typeof import('./wait.mjs');
+    herdr: typeof import('./herdr.mjs'); storage: typeof import('./storage.mjs'); ipc: typeof import('./ipc.mjs'); wait: typeof import('./wait.mjs'); config: typeof import('./config.mjs');
   };
   const { Controller } = core.controller;
   const { originOf, hasCloneActivity, handoffModel, transcriptSince, mergeEnvelope, MAX_MERGE_BYTES } = core.model;
@@ -33,6 +33,15 @@ export default async function liveClone(pi: ExtensionAPI) {
     const found = peers.filter((p: any) => p.sessionId === parentId && p.herdrSocket === host.socketPath);
     if (found.length !== 1) throw new Error('Original session is not connected. Resume it with this extension, then retry the handoff.');
     return found[0];
+  }
+
+  async function closeTwin(ctx: ExtensionContext) {
+    const mine = generation, leaf = ctx.sessionManager.getLeafId(), sessionId = ctx.sessionManager.getSessionId();
+    const unchanged = () => mine === generation && ctx.isIdle() && ctx.sessionManager.getSessionId() === sessionId && ctx.sessionManager.getLeafId() === leaf;
+    await host.closeSelf(sessionId, unchanged);
+    // A real Herdr pane close usually terminates us first. Non-Herdr hosts and
+    // test adapters still need Pi's graceful shutdown path.
+    if (unchanged()) { notify(ctx, 'Closing twin; saved session retained.'); ctx.shutdown(); }
   }
 
   async function finishMerge(ctx: ExtensionContext, origin: any, record: any, receipt: { status: string }, mine: number) {
@@ -63,8 +72,8 @@ export default async function liveClone(pi: ExtensionAPI) {
     if (receipt.status !== 'delivered') throw new Error(`Handoff ${receipt.status}; twin kept open.`);
     if (!unchanged()) return notify(ctx, 'Handoff imported, but this twin has new activity. Keeping it open.', 'warning');
     controller?.outgoing.put({ ...record, status: 'delivered', updatedAt: new Date().toISOString() });
-    notify(ctx, `Handoff imported by ${origin.parentName}. Closing twin; saved session retained.`);
-    ctx.shutdown();
+    notify(ctx, `Handoff imported by ${origin.parentName}; saved session retained.`);
+    await closeTwin(ctx);
   }
 
   async function startSummary(ctx: ExtensionContext, review: boolean) {
@@ -99,7 +108,7 @@ export default async function liveClone(pi: ExtensionAPI) {
     if (origin.mergeAllowed === false) return notify(ctx, 'This is a permanent fork; merge-back is disabled.', 'warning');
     if (!hasCloneActivity(ctx.sessionManager, origin)) {
       notify(ctx, 'No interaction since cloning; nothing to merge. Exiting this clone; saved session retained.');
-      ctx.shutdown();
+      await closeTwin(ctx);
       return;
     }
     const myGeneration = generation;
@@ -151,7 +160,7 @@ export default async function liveClone(pi: ExtensionAPI) {
   pi.on('session_start', async (_event, ctx) => {
     const mine = ++generation;
     const dir = await runtimeDir();
-    const current = new Controller({ pi, ctx, dir: stateDir(), launch: (child: any) => host.launch(child), resolveName: () => host.displayName() });
+    const current = new Controller({ pi, ctx, dir: stateDir(), launch: (child: any) => host.launch(child), resolveName: () => host.displayName(), nameTemplate: () => core.config.readNameTemplate() });
     controller = current;
     const origin = originOf(ctx.sessionManager);
     try {

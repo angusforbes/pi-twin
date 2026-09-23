@@ -12,7 +12,7 @@ Experimental Pi package, initially for **Herdr on Linux/macOS**. Local developme
 - **Idle source:** copy the current active conversation branch.
 - **Busy source:** copy the checkpoint before the prompt initiating the current run. Retain that boundary across retries and queued continuations until Pi fully settles. If the extension did not observe a safe boundary, fail rather than guess.
 - Inherit the **current provider/model, effective thinking effort, and working directory**. Context includes the selected branch's compaction checkpoints. Model/effort can diverge independently afterward.
-- Names are `Sift[a]`, `Sift[b]`, etc. Name reservations survive restarts. Cloning a clone creates a child of that clone.
+- Default names are `Sift[a]`, `Sift[b]`, etc.; the format is configurable. Name reservations survive restarts. Cloning a clone creates a child of that clone.
 - The new agent waits for your input: no automatic prompt, replayed task, or hidden model call.
 - **Both agents share files.** Conversation branching does not rewind the filesystem, create a Git branch, or isolate writes. A warning is shown; coordinate overlapping edits as you would between any agents.
 
@@ -38,6 +38,28 @@ For the external CLI, put `bin/pi-twin.mjs` on PATH as `pi-twin` (for example us
 
 Nothing in these instructions requires restarting Herdr. **Installing a patched Herdr binary for native tab-menu entries is a separate deployment decision.**
 
+## Naming configuration
+
+Create or edit `~/.pi/agent/pi-twin.json` (or `pi-twin.json` inside `PI_CODING_AGENT_DIR` when using an alternate Pi configuration directory):
+
+```json
+{
+  "nameTemplate": "{parent}[{letter}]"
+}
+```
+
+Supported placeholders:
+
+- `{parent}`: parent name, without leading decorative icon/colour markup.
+- `{letter}`: `a` through `z`.
+- `{number}`: allocation number starting at 1.
+
+Examples: `{parent}[{letter}]`, `{parent}-{number}`, `{parent}-twin-{letter}`.
+
+Templates require `{parent}` and at least one counter placeholder. Unknown placeholders/settings or invalid JSON fail visibly instead of silently falling back. Templates containing `{letter}` allow 26 allocations per parent; number-only templates allow up to 100,000. Allocations are never reused. Changing formats continues the parent's existing counter, so an existing parent's next numeric name may not start at 1.
+
+Configuration is read on every split; no reload is needed after editing it. Only new twins are affected. Missing config uses the default above.
+
 ## Commands
 
 | Command | Meaning |
@@ -54,19 +76,19 @@ Nothing in these instructions requires restarting Herdr. **Installing a patched 
 
 When Pi Model Auto (`pi-router/auto`) is selected, handoff generation temporarily uses the last successful concrete model, instead of allowing an extension-generated prompt to route to a different endpoint. The Auto selection is restored afterward unless you change models yourself. Explicit model selections are left alone.
 
-If a clone has had **no interaction since creation**, `/twin-merge` simply exits that clone without a merge or confirmation dialog. Its saved session remains. Inherited history, the clone notice, and settings changes do not count as interaction; new messages, imported context, and discussion on abandoned branches do. Busy clones are never automatically exited.
+If a clone has had **no interaction since creation**, `/twin-merge` closes its own Herdr pane without a merge or confirmation dialog. Its tab disappears when that was the last pane; neighbouring panes are never closed. Its saved session remains. Inherited history, the clone notice, and settings changes do not count as interaction; new messages, imported context, and discussion on abandoned branches do. Busy clones are never automatically exited.
 
 During merge review choose **background information only** (default) or explicitly ask the original to act after its current task. A busy original receives nothing mid-task: the handoff lives in a durable queue until full `agent_settled`.
 
 The handoff is one attributed custom message, not replayed assistant/tool history. Duplicate submissions of the same reviewed content are idempotent. The original's model settings are not overwritten. Files are not copied or merged: with a shared directory, edits already happened.
 
-After confirmed import, the twin exits automatically; saved session files are never deleted. A queued handoff opens a cancellable waiting dialog while the parent continues its task uninterrupted. **Keep twin open** or Escape stops waiting, not the queued delivery. Use `/twin-merge-status` later to resume waiting and close after receipt. Connection failures, unknown receipts, session switches, or new activity in the twin prevent automatic closing. Receipt confirms context import—not completion of any requested follow-up work.
+After confirmed import, the twin closes its own Herdr pane automatically (or exits Pi outside Herdr); saved session files are never deleted. A queued handoff opens a cancellable waiting dialog while the parent continues its task uninterrupted. **Keep twin open** or Escape stops waiting, not the queued delivery. Use `/twin-merge-status` later to resume waiting and close after receipt. Connection failures, unknown receipts, session switches, or new activity in the twin prevent automatic closing. Receipt confirms context import—not completion of any requested follow-up work.
 
 Full transcript mode means **text transcript**: private thinking is not included, images are explicitly marked omitted and remain in the saved session. A 96 KiB content cap fails visibly rather than silently truncating; use a summary for large conversations.
 
 ## Historical twins and permanent forks
 
-`/twin-tree` uses Pi's native history picker without navigating the original session. Select a point, confirm, and a new tab opens with context through that point. For a user message, choose **before the prompt** (prefill its text without sending) or **through the message** (context only; no automatic execution). Unsafe tool-call midpoints are refused; choose a completed point instead.
+`/twin-tree` uses Pi's native history picker without navigating the original session. Select a point, confirm, and a new tab opens with context through that point. For a user message, choose **before the prompt** (prefill its text without sending) or **through the message** (context only; no automatic execution). Tool-call midpoints are refused; choose a point after the results or a later user message. Older interrupted calls followed by later turns no longer block selection: their outcomes are explicitly marked unknown, with original history retained and no tools replayed. Pi's normal provider adapter handles those interrupted records.
 
 A historical twin uses the ordinary reviewed `/twin-merge` flow. Its handoff includes the fork boundary and an explicit **message from earlier context** warning. It is appended to the parent's current branch when the parent settles—not inserted into the past or used to rewind history.
 

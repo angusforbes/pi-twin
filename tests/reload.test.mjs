@@ -10,16 +10,16 @@ import { loadCore } from '../src/load-core.mjs';
 test('reload refreshes controller dependencies despite an already-cached native ESM model', async t => {
   const dir = mkdtempSync(join(tmpdir(), 'split-reload-'));
   t.after(() => rmSync(dir, { recursive: true, force: true }));
-  for (const file of ['controller.mjs', 'model.mjs', 'herdr.mjs', 'storage.mjs', 'ipc.mjs', 'wait.mjs']) {
+  for (const file of ['controller.mjs', 'model.mjs', 'herdr.mjs', 'storage.mjs', 'ipc.mjs', 'wait.mjs', 'config.mjs']) {
     writeFileSync(join(dir, file), readFileSync(new URL('../src/' + file, import.meta.url)));
   }
   const path = join(dir, 'model.mjs');
   const current = readFileSync(path, 'utf8');
-  writeFileSync(path, current.replace('`${root}[${letter}]`', '`${root}_old_${letter}`'));
+  writeFileSync(path, current.replace('const root = bareName(sourceName);', "const root = bareName(sourceName) + '_old';"));
   const native = await import(pathToFileURL(path).href);
-  assert.equal(native.reserveName(join(dir, 'old-names'), 'parent', 'Thumper'), 'Thumper_old_a');
+  assert.equal(native.reserveName(join(dir, 'old-names'), 'parent', 'Thumper'), 'Thumper_old[a]');
   const first = await loadCore(SessionManager, pathToFileURL(join(dir, 'loader.mjs')).href);
-  assert.equal(first.model.reserveName(join(dir, 'first-names'), 'parent', 'Thumper'), 'Thumper_old_a');
+  assert.equal(first.model.reserveName(join(dir, 'first-names'), 'parent', 'Thumper'), 'Thumper_old[a]');
   writeFileSync(path, current);
   const second = await loadCore(SessionManager, pathToFileURL(join(dir, 'loader.mjs')).href);
   const sm = SessionManager.create(dir, join(dir, 'sessions'));

@@ -1,14 +1,15 @@
 import { createHash } from 'node:crypto';
 import { join, dirname } from 'node:path';
 import { SessionManager } from '@earendil-works/pi-coding-agent';
+import { DEFAULT_NAME_TEMPLATE } from './config.mjs';
 import { captureSnapshot, captureHistoricalSnapshot, createClone, reserveName, originOf, Mailbox, MAX_MERGE_BYTES, formatMerge } from './model.mjs';
 
 export function sessionKey(id) { return createHash('sha256').update(id).digest('hex'); }
 
 /** No agent prompts, files, or lifecycle state are mutated by a clone request. */
 export class Controller {
-  constructor({ pi, ctx, dir, launch, resolveName = async () => undefined }) {
-    this.pi = pi; this.ctx = ctx; this.dir = dir; this.launch = launch; this.resolveName = resolveName;
+  constructor({ pi, ctx, dir, launch, resolveName = async () => undefined, nameTemplate = () => DEFAULT_NAME_TEMPLATE }) {
+    this.pi = pi; this.ctx = ctx; this.dir = dir; this.launch = launch; this.resolveName = resolveName; this.nameTemplate = nameTemplate;
     this.sessionId = ctx.sessionManager.getSessionId();
     this.busySnapshot = undefined;
     this.active = true;
@@ -48,7 +49,7 @@ export class Controller {
     try {
       if (!snapshot.name) snapshot.name = await this.resolveName();
       this.assertCurrent();
-      name = reserveName(join(this.dir, 'names'), this.sessionId, snapshot.name);
+      name = reserveName(join(this.dir, 'names'), this.sessionId, snapshot.name, this.nameTemplate());
       child = createClone({ SessionManager, snapshot, sessionDir: dirname(snapshot.sourceFile), name, model, thinking, busy });
       const prepared = { id: requestId, status: 'prepared', ...child, model: { provider: model.provider, id: model.id }, thinking, cwd: ctx.cwd };
       this.clones.put(prepared);

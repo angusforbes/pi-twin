@@ -1,6 +1,7 @@
 import { randomUUID, randomBytes } from 'node:crypto';
 import { mkdirSync, mkdtempSync, writeFileSync, readFileSync, readdirSync, renameSync, rmSync, chmodSync } from 'node:fs';
 import { join } from 'node:path';
+import { DEFAULT_NAME_TEMPLATE, validateNameTemplate } from './config.mjs';
 
 export const ORIGIN = 'pi-twin-origin-v1';
 export const RECEIPT = 'pi-twin-receipt-v1';
@@ -60,19 +61,24 @@ export function bareName(name) {
 }
 
 /** Durable exclusive allocation: concurrent clicks cannot get the same clone name. */
-export function reserveName(dir, sourceId, sourceName) {
+export function reserveName(dir, sourceId, sourceName, template = DEFAULT_NAME_TEMPLATE) {
+  validateNameTemplate(template);
   if (!/^[a-zA-Z0-9_-]{1,128}$/.test(sourceId)) throw new Error('Invalid source session ID');
   mkdirSync(dir, { recursive: true, mode: 0o700 });
   const root = bareName(sourceName);
-  for (const letter of 'abcdefghijklmnopqrstuvwxyz') {
-    const marker = join(dir, `${sourceId}-letter-${letter}.reserved`);
-    const name = `${root}[${letter}]`;
+  const letters = 'abcdefghijklmnopqrstuvwxyz';
+  const limit = template.includes('{letter}') ? 26 : 100000;
+  for (let number = 1; number <= limit; number++) {
+    const letter = letters[number - 1];
+    const marker = join(dir, `${sourceId}-${letter ? `letter-${letter}` : `number-${number}`}.reserved`);
+    const values = { parent: root, letter, number: String(number) };
+    const name = template.replace(/\{(parent|letter|number)\}/g, (_match, key) => values[key]).trim();
     try {
       writeFileSync(marker, JSON.stringify({ sourceId, name }), { flag: 'wx', mode: 0o600 });
       return name;
     } catch (e) { if (e.code !== 'EEXIST') throw e; }
   }
-  throw new Error('All split names [a] through [z] have been allocated for this parent. Names are not reused.');
+  throw new Error(template.includes('{letter}') ? 'All split names [a] through [z] have been allocated for this parent. Names are not reused.' : 'All 100000 numeric split names have been allocated for this parent.');
 }
 
 /**
@@ -95,14 +101,14 @@ export function createClone({ SessionManager, snapshot, sessionDir, name, model,
     // Validate what Pi will actually send, not archived pre-compaction history.
     // Interrupted calls before firstKeptEntryId have already been superseded by
     // the compaction summary; retaining that archive must not prevent a split.
-    assertCompleteTools(manager.buildSessionContext().messages.map(message => ({ type: 'message', message })));
+    const interruptedCalls = assertCompleteTools(manager.buildSessionContext().messages.map(message => ({ type: 'message', message })), { beforeUser: !!snapshot.history?.beforeUser });
     const childId = manager.getSessionId();
     const lineage = {
       version: 1, childId, name, parentId: snapshot.header.id,
       parentFile: snapshot.sourceFile, parentName: bareName(snapshot.name),
       boundaryId: snapshot.entries.at(-1)?.id ?? null,
       createdAt: new Date().toISOString(), busyCheckpoint: !!busy,
-      kind: snapshot.history?.kind ?? 'split', mergeAllowed: snapshot.history?.kind !== 'fork',
+      kind: snapshot.history?.kind ?? 'split', mergeAllowed: snapshot.history?.kind !== 'fork', interruptedCalls,
       ...(snapshot.history ? { history: snapshot.history } : {}),
     };
     manager.appendModelChange(model.provider, model.id);
@@ -114,6 +120,7 @@ export function createClone({ SessionManager, snapshot, sessionDir, name, model,
       (busy ? 'Your context stops before the prompt that started the original\'s current task. ' : '') +
       (lineage.kind === 'tree' ? `Historical split from entry ${lineage.history.selectedEntryId} (${lineage.history.selectedAt}). Later parent context is not included. ` : '') +
       (lineage.kind === 'fork' ? 'This is a permanent conversation fork, not a temporary exploration: merge-back is disabled. You may choose a distinct name. ' : '') +
+      (interruptedCalls ? `${interruptedCalls} earlier tool call(s) have no saved result. Execution outcome is unknown; verify files before relying on those calls. Pi's normal provider adapter handles the interrupted records; no tools were replayed. ` : '') +
       'The original remains active. Wait for your own user request; do not resume or repeat the original\'s task. ' +
       'You share the same working directory: changes to files affect both agents. This is not filesystem isolation.',
       true, { childId, parentId: lineage.parentId });
@@ -125,8 +132,9 @@ export function createClone({ SessionManager, snapshot, sessionDir, name, model,
   } finally { rmSync(scratch, { recursive: true, force: true }); }
 }
 
-export function assertCompleteTools(entries) {
+export function assertCompleteTools(entries, { beforeUser = false } = {}) {
   const pending = new Set();
+  let interrupted = 0;
   for (const e of entries) {
     if (e.type !== 'message') continue;
     const m = e.message;
@@ -134,7 +142,12 @@ export function assertCompleteTools(entries) {
       if (!pending.delete(m.toolCallId)) throw new Error('Snapshot contains an orphaned tool result; choose a completed conversation checkpoint');
       continue;
     }
-    if (pending.size && (m.role === 'assistant' || m.role === 'user')) throw new Error('Snapshot contains an incomplete tool batch; finish or recover that task first');
+    // A later turn establishes that a missing historical result was interrupted,
+    // not a tool still in flight. Pi's provider adapter supplies error placeholders.
+    if (pending.size && (m.role === 'assistant' || m.role === 'user')) {
+      interrupted += pending.size;
+      pending.clear();
+    }
     if (m.role === 'assistant' && Array.isArray(m.content)) {
       for (const call of m.content.filter(c => c.type === 'toolCall')) {
         if (pending.has(call.id)) throw new Error('Snapshot contains duplicate tool calls');
@@ -142,7 +155,8 @@ export function assertCompleteTools(entries) {
       }
     }
   }
-  if (pending.size) throw new Error('Snapshot contains an incomplete tool batch; finish or recover that task first');
+  if (pending.size && !beforeUser) throw new Error('Selected point ends inside an incomplete tool batch; choose a point after the tool results or a later user message');
+  return interrupted + pending.size;
 }
 
 /** Text rendering deliberately does not replay assistant/tool records or private thinking. */

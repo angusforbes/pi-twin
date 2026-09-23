@@ -59,7 +59,17 @@ try {
   assert.equal(cloneState.sessionId, child.childId);
   assert.equal(info.agent.tokens?.name, label + '[a]', JSON.stringify(info));
   assert.equal(info.agent.tokens?.twin_session, child.childId);
-  console.log('PASS: actual Herdr creates two independent Pi tabs; original survives; clone named, idle, correct cwd/model/effort. No model calls. Native context-menu clicks not exercised.');
+  await request(clonePeer, { method: 'merge-ui' });
+  let removed = false;
+  for (let attempt = 0; attempt < 50 && !removed; attempt++) {
+    const tabs = await herdr(['tab', 'list', '--workspace', process.env.HERDR_PANE_ID.split(':')[0]]);
+    removed = !tabs.tabs.some(t => t.tab_id === child.host.tabId);
+    if (!removed) await new Promise(resolve => setTimeout(resolve, 100));
+  }
+  assert.ok(removed, 'unused twin merge removes the actual tab, not just Pi');
+  ownedTabs.delete(child.host.tabId);
+  assert.equal((await request(original, { method: 'status' })).sessionId, beforeState.sessionId);
+  console.log('PASS: actual Herdr creates independent Pi tabs; correct name/cwd/model/effort; unused twin merge closes its tab and leaves original alive. No model calls. Native context-menu clicks not exercised.');
 } finally {
   // Recover tabs even if a launch was uncertain; inspect only test-owned cwd.
   try {

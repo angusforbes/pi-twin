@@ -66,6 +66,19 @@ test('historical selection can address an abandoned branch, not just current his
   assert.equal(snapshot.entries.at(-1).id, f.later);
   assert.ok(!JSON.stringify(snapshot.entries).includes('Alternate path'));
 });
+test('historical interruptions preceding a later turn do not poison tree selections', async t => {
+  const f = fixture(t);
+  f.sm.appendMessage({ role: 'assistant', content: [{ type: 'toolCall', id: 'lost-on-crash', name: 'bash', arguments: {} }], timestamp: 5 });
+  const later = f.sm.appendMessage({ role: 'user', content: 'Continue after crash', timestamp: 6 });
+  const answer = f.sm.appendMessage({ role: 'assistant', content: [{ type: 'text', text: 'Continued safely' }], timestamp: 7 });
+  for (const [id, selection] of [['through', { kind: 'tree', entryId: answer }], ['before', { kind: 'fork', entryId: later }]]) {
+    const child = await f.controller.clone(id, selection);
+    assert.equal(child.lineage.interruptedCalls, 1);
+    const saved = SessionManager.open(child.file);
+    assert.ok(JSON.stringify(saved.getEntries()).includes('Execution outcome is unknown'));
+    assert.ok(!saved.getEntries().some(e => e.type === 'message' && e.message.role === 'toolResult' && e.message.toolCallId === 'lost-on-crash'), 'no fabricated results in saved history');
+  }
+});
 test('historical tool-call midpoint is refused, not silently shortened', async t => {
   const f = fixture(t);
   const midpoint = f.sm.appendMessage({ role: 'assistant', content: [{ type: 'toolCall', id: 'call', name: 'bash', arguments: {} }], timestamp: 5 });

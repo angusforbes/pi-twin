@@ -75,7 +75,17 @@ function start(env, extra = []) {
 try {
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   for (const sub of ['bin', 'config', 'runtime', 'state', 'sessions']) mkdirSync(join(temp, sub), { mode: 0o700 });
-  const fake = `#!/usr/bin/env node\nconst a=process.argv.slice(2); console.log(JSON.stringify({result:a[0]==='tab'&&a[1]==='create'?{tab:{tab_id:'wTest:t2'},root_pane:{pane_id:'wTest:p2'}}:{ok:true}}));\n`;
+  const fake = `#!/usr/bin/env node
+const fs=require('node:fs'),path=require('node:path');
+const a=process.argv.slice(2); let result={ok:true};
+if(a[0]==='tab'&&a[1]==='create')result={tab:{tab_id:'wTest:t2'},root_pane:{pane_id:'wTest:p2'}};
+if(a[0]==='agent'&&a[1]==='get'){
+ const dir=path.join(process.env.XDG_RUNTIME_DIR,'pi-twin');
+ const peer=fs.readdirSync(dir).filter(f=>f.endsWith('.json')).map(f=>JSON.parse(fs.readFileSync(path.join(dir,f)))).find(p=>p.paneId===a[2]);
+ result={agent:{tokens:{twin_session:peer?.sessionId}}};
+}
+console.log(JSON.stringify({result}));
+`;
   writeFileSync(join(temp, 'bin/herdr'), fake, { mode: 0o700 });
   const env = { ...process.env, PATH: join(temp, 'bin') + ':' + process.env.PATH, PI_CODING_AGENT_DIR: join(temp, 'config'), PI_CODING_AGENT_SESSION_DIR: join(temp, 'sessions'), PI_TWIN_STATE_DIR: join(temp, 'state'), XDG_RUNTIME_DIR: join(temp, 'runtime'), PI_OFFLINE: '1', PI_TELEMETRY: '0', HERDR_PANE_ID: 'wTest:p1', HERDR_SOCKET_PATH: join(temp, 'fake-herdr.sock'), TWIN_TEST_URL: `http://127.0.0.1:${server.address().port}/v1` };
   delete env.HERDR_CLIENT_SOCKET_PATH;
