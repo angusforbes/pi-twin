@@ -91,7 +91,7 @@ export default async function liveClone(pi: ExtensionAPI) {
   }
 
   async function mergeUI(ctx: ExtensionContext, args = '') {
-    if (uiBusy) return notify(ctx, 'A clone dialog is already open.', 'warning');
+    if (uiBusy) return notify(ctx, 'A twin dialog is already open.', 'warning');
     if (!ctx.isIdle()) return notify(ctx, 'Let the clone finish before reviewing its handoff. The original can remain busy.', 'warning');
     if (!ctx.hasUI) throw new Error('Merge preview requires interactive Pi');
     const origin = originOf(ctx.sessionManager);

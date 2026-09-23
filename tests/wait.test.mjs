@@ -12,6 +12,14 @@ test('cancel during a receipt query never closes even if delivery succeeds', asy
   const result = await waitForReceipt({ read: async () => { abort.abort(); return { status: 'delivered' }; }, signal: abort.signal, isCurrent: () => true });
   assert.equal(result, undefined);
 });
+test('cancel releases the UI even while a receipt query remains in flight', async () => {
+  const abort = new AbortController();
+  let started;
+  const reading = new Promise(resolve => { started = resolve; });
+  const waiting = waitForReceipt({ read: () => { started(); return new Promise(() => {}); }, signal: abort.signal, isCurrent: () => true });
+  await reading; abort.abort();
+  assert.equal(await waiting, undefined);
+});
 test('session replacement or new activity during a receipt query prevents closing', async () => {
   let current = true;
   const result = await waitForReceipt({ read: async () => { current = false; return { status: 'delivered' }; }, signal: new AbortController().signal, isCurrent: () => current });
