@@ -1,5 +1,9 @@
 # Review and verification notes
 
+## Compacted interrupted-tool regression
+
+A real long-lived session could not split because snapshot validation inspected archived pre-compaction tool calls with missing results. Pi's effective context had already replaced those calls with a compaction summary. Validation now runs on the independent snapshot manager's `buildSessionContext().messages`, retaining the full archive without treating superseded calls as active. Tests cover both successful splitting past compacted interruptions and refusal of incomplete tool calls in retained context. Verified extraction from the reported session's pre-task checkpoint without launching a tab or modifying the original.
+
 ## Scope
 
 Experimental implementation tested against Pi 0.85.1. Do not equate mocked host tests with native Herdr mouse-menu verification. No shared Herdr deployment or npm publication is implied.

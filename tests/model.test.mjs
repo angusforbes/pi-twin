@@ -79,6 +79,25 @@ test('native extraction preserves compaction context', t => {
   assert.ok(JSON.stringify(child.buildSessionContext()).includes('Earlier plan summary'));
   assert.ok(JSON.stringify(child.buildSessionContext()).includes('Remember the blue widget'));
 });
+test('compacted-away interrupted tools do not block a safe split', t => {
+  const { dir, sm } = fixture(t);
+  sm.appendMessage({ role: 'user', content: 'Old interrupted task', timestamp: 1 });
+  sm.appendMessage({ role: 'assistant', content: [{ type: 'toolCall', id: 'old-call', name: 'bash', arguments: {} }], timestamp: 2 });
+  const retained = sm.appendMessage({ role: 'user', content: 'A later completed discussion', timestamp: 3 });
+  sm.appendMessage({ role: 'assistant', content: [{ type: 'text', text: 'Ready to split' }], timestamp: 4 });
+  sm.appendCompaction('Old task was interrupted; no result is claimed.', retained, 1234);
+  const child = SessionManager.open(clone(captureSnapshot(sm), dir).file);
+  assert.ok(JSON.stringify(child.getEntries()).includes('old-call'), 'archive is retained, not rewritten');
+  assert.ok(!JSON.stringify(child.buildSessionContext().messages).includes('old-call'));
+  assert.ok(JSON.stringify(child.buildSessionContext().messages).includes('Ready to split'));
+});
+test('compaction never hides incomplete tools in the retained context', t => {
+  const { dir, sm } = fixture(t); conversation(sm);
+  const retained = sm.appendMessage({ role: 'user', content: 'Current task', timestamp: 3 });
+  sm.appendCompaction('Earlier discussion', retained, 1234);
+  sm.appendMessage({ role: 'assistant', content: [{ type: 'toolCall', id: 'unfinished', name: 'bash', arguments: {} }], timestamp: 4 });
+  assert.throws(() => clone(captureSnapshot(sm), dir), /incomplete tool batch/);
+});
 test('transcript contains only divergent text, no thinking, and labels omitted images', t => {
   const { dir, sm } = fixture(t); conversation(sm);
   const child = SessionManager.open(clone(captureSnapshot(sm), dir).file);

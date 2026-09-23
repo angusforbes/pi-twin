@@ -65,7 +65,6 @@ export function reserveName(dir, sourceId, sourceName) {
  */
 export function createClone({ SessionManager, snapshot, sessionDir, name, model, thinking, busy }) {
   if (!model?.provider || !model?.id) throw new Error('Source has no active model');
-  assertCompleteTools(snapshot.entries);
   if (!snapshot.sourceFile) throw new Error('Ephemeral sessions cannot be cloned persistently');
   mkdirSync(sessionDir, { recursive: true, mode: 0o700 });
   const scratch = mkdtempSync(join(sessionDir, '.live-clone-'));
@@ -75,6 +74,10 @@ export function createClone({ SessionManager, snapshot, sessionDir, name, model,
     const manager = SessionManager.open(snapFile, scratch);
     if (snapshot.entries.length) manager.createBranchedSession(snapshot.entries.at(-1).id);
     else manager.newSession({ parentSession: snapshot.sourceFile });
+    // Validate what Pi will actually send, not archived pre-compaction history.
+    // Interrupted calls before firstKeptEntryId have already been superseded by
+    // the compaction summary; retaining that archive must not prevent a split.
+    assertCompleteTools(manager.buildSessionContext().messages.map(message => ({ type: 'message', message })));
     const childId = manager.getSessionId();
     const lineage = {
       version: 1, childId, name, parentId: snapshot.header.id,
