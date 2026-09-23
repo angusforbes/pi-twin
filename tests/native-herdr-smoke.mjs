@@ -23,7 +23,7 @@ try {
   const before = await herdr(['agent', 'list']); restorePane = before.agents.find(a => a.focused)?.pane_id;
   const env = { PI_CODING_AGENT_DIR: join(temp, 'config'), PI_CODING_AGENT_SESSION_DIR: join(temp, 'sessions'), PI_TWIN_STATE_DIR: join(temp, 'state'), XDG_RUNTIME_DIR: join(temp, 'runtime'), PI_OFFLINE: '1', PI_TELEMETRY: '0' };
   for (const d of [env.PI_CODING_AGENT_DIR, env.PI_CODING_AGENT_SESSION_DIR, env.PI_TWIN_STATE_DIR, env.XDG_RUNTIME_DIR, join(env.PI_CODING_AGENT_DIR, 'extensions')]) mkdirSync(d, { recursive: true, mode: 0o700 });
-  const provider = readFileSync(join(root, 'tests/fixtures/mock-provider.ts'), 'utf8').replace("if (!process.env.LIVE_CLONE_TEST_URL?.startsWith('http://127.0.0.1:')) throw new Error('Test provider requires loopback URL');", '').replace('process.env.LIVE_CLONE_TEST_URL', "'http://127.0.0.1:9/v1'");
+  const provider = readFileSync(join(root, 'tests/fixtures/mock-provider.ts'), 'utf8').replace("if (!process.env.TWIN_TEST_URL?.startsWith('http://127.0.0.1:')) throw new Error('Test provider requires loopback URL');", '').replace('process.env.TWIN_TEST_URL', "'http://127.0.0.1:9/v1'");
   writeFileSync(join(env.PI_CODING_AGENT_DIR, 'extensions', 'test-provider.ts'), provider);
   const label = `LiveCloneTest_${Date.now()}`;
   const create = ['tab', 'create', '--workspace', process.env.HERDR_PANE_ID.split(':')[0], '--cwd', temp, '--label', label, '--no-focus'];
