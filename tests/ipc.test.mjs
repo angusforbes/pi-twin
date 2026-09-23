@@ -40,11 +40,11 @@ function descFilename(sessionId) {
 
 describe('runtimeDir', () => {
 
-  test('creates pi-live-clone subdir under XDG_RUNTIME_DIR with mode 0700', async () => {
+  test('creates pi-twin subdir under XDG_RUNTIME_DIR with mode 0700', async () => {
     const base = await mktemp();
     try {
       const dir = await runtimeDir({ XDG_RUNTIME_DIR: base });
-      assert.equal(dir, path.join(base, 'pi-live-clone'));
+      assert.equal(dir, path.join(base, 'pi-twin'));
       const st = await fs.stat(dir);
       assert.ok(st.isDirectory());
       assert.equal(st.mode & 0o777, 0o700);
@@ -61,11 +61,11 @@ describe('runtimeDir', () => {
     } finally { await rm(base); }
   });
 
-  test('falls back to tmpdir/pi-live-clone-<uid> when XDG_RUNTIME_DIR absent', async () => {
+  test('falls back to tmpdir/pi-twin-<uid> when XDG_RUNTIME_DIR absent', async () => {
     const dir = await runtimeDir({});
     try {
       assert.ok(dir.startsWith(os.tmpdir()));
-      assert.ok(dir.endsWith(`pi-live-clone-${uid()}`));
+      assert.ok(dir.endsWith(`pi-twin-${uid()}`));
       const st = await fs.stat(dir);
       assert.ok(st.isDirectory());
       assert.equal(st.mode & 0o777, 0o700);
@@ -75,7 +75,7 @@ describe('runtimeDir', () => {
   test('repairs 0755 dir owned by us to 0700', async () => {
     const base = await mktemp();
     try {
-      const cloneDir = path.join(base, 'pi-live-clone');
+      const cloneDir = path.join(base, 'pi-twin');
       await fs.mkdir(cloneDir, { mode: 0o755 });
       await runtimeDir({ XDG_RUNTIME_DIR: base });
       const st = await fs.stat(cloneDir);
@@ -87,7 +87,7 @@ describe('runtimeDir', () => {
     const base = await mktemp();
     try {
       const real     = path.join(base, 'real');
-      const linkPath = path.join(base, 'pi-live-clone');
+      const linkPath = path.join(base, 'pi-twin');
       await fs.mkdir(real, { mode: 0o700 });
       await fs.symlink(real, linkPath);
       await assert.rejects(

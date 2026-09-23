@@ -4,7 +4,7 @@ import { join, isAbsolute } from 'node:path';
 
 /** Durable state is NOT in XDG_RUNTIME_DIR: reboot must not lose merge queues or lineage. */
 export function stateDir(env = process.env) {
-  const path = env.PI_LIVE_CLONE_STATE_DIR || join(env.XDG_STATE_HOME || join(homedir(), '.local', 'state'), 'pi-live-clone');
+  const path = env.PI_TWIN_STATE_DIR || join(env.XDG_STATE_HOME || join(homedir(), '.local', 'state'), 'pi-twin');
   if (!isAbsolute(path)) throw new Error('Live-clone state directory must be absolute');
   mkdirSync(path, { recursive: true, mode: 0o700 });
   const st = lstatSync(path);

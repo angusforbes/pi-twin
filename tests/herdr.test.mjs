@@ -20,7 +20,7 @@ test('non-Herdr host refuses automatic launch', async () => {
 test('publish uses explicit capability tokens and only renames own clone pane', async () => {
   const calls = []; const host = createHerdr({ env: { HERDR_PANE_ID: 'w8:pT' }, run: async (_cmd, args) => { calls.push(args); return { stdout: '{}' }; } });
   await host.publish({ name: 'Sift[a]', clone: true });
-  assert.ok(calls[0].includes('live_clone=1')); assert.ok(calls[0].includes('live_clone_parent=1'));
+  assert.ok(calls[0].includes('twin=1')); assert.ok(calls[0].includes('twin_parent=1'));
   assert.ok(calls[0].includes('name=Sift[a]'));
   assert.equal(calls.length, 1);
   await host.publish({ enabled: false }); assert.ok(calls[1].includes('--clear-token'));
@@ -32,11 +32,11 @@ test('host errors are explicit, no shell fallback', () => {
 
 test('only safe configuration selectors propagate into a new tab, not credentials or source session IDs', async () => {
   const calls = [];
-  const env = { HERDR_PANE_ID: 'w8:pS', PI_CODING_AGENT_DIR: '/tmp/private config', PI_LIVE_CLONE_STATE_DIR: '/tmp/state', OPENAI_API_KEY: 'must-not-appear', PI_SESSION_ID: 'original-id' };
+  const env = { HERDR_PANE_ID: 'w8:pS', PI_CODING_AGENT_DIR: '/tmp/private config', PI_TWIN_STATE_DIR: '/tmp/state', OPENAI_API_KEY: 'must-not-appear', PI_SESSION_ID: 'original-id' };
   const host = createHerdr({ env, run: async (_cmd, args) => { calls.push(args); return { stdout: JSON.stringify({ result: { tab: { tab_id: 'w8:tT' }, root_pane: { pane_id: 'w8:pT' } } }) }; } });
   await host.launch(child);
   assert.ok(calls[0].includes('PI_CODING_AGENT_DIR=/tmp/private config'));
-  assert.ok(calls[0].includes('PI_LIVE_CLONE_STATE_DIR=/tmp/state'));
+  assert.ok(calls[0].includes('PI_TWIN_STATE_DIR=/tmp/state'));
   assert.ok(!JSON.stringify(calls).includes('must-not-appear'));
   assert.ok(!JSON.stringify(calls).includes('original-id'));
 });
@@ -44,5 +44,5 @@ test('published capability contains the exact session ID for stale-menu protecti
   const calls = [];
   const host = createHerdr({ env: { HERDR_PANE_ID: 'w8:pS' }, run: async (_cmd, args) => { calls.push(args); return { stdout: '{}' }; } });
   await host.publish({ sessionId: 'pi-session-uuid', enabled: true });
-  assert.ok(calls[0].includes('live_clone_session=pi-session-uuid'));
+  assert.ok(calls[0].includes('twin_session=pi-session-uuid'));
 });

@@ -81,7 +81,7 @@ export default async function liveClone(pi: ExtensionAPI) {
       if (kind === 'transcript') text = transcriptSince(ctx.sessionManager, origin);
       else {
         const branch = ctx.sessionManager.getBranch();
-        const start = branch.findIndex((e: any) => e.type === 'custom' && e.customType === 'pi-live-clone-origin-v1' && e.data?.childId === origin.childId);
+        const start = branch.findIndex((e: any) => e.type === 'custom' && e.customType === 'pi-twin-origin-v1' && e.data?.childId === origin.childId);
         const reply = branch.slice(start + 1).filter((e: any) => e.type === 'message' && e.message.role === 'assistant').at(-1) as any;
         text = (reply?.message?.content ?? []).filter((c: any) => c.type === 'text').map((c: any) => c.text).join('\n') || 'Conclusions:\n\nRecommendations:\n\nUnresolved questions:\n\nFiles changed / tests:\n';
       }

@@ -2,8 +2,8 @@ import { randomUUID, randomBytes } from 'node:crypto';
 import { mkdirSync, mkdtempSync, writeFileSync, readFileSync, readdirSync, renameSync, rmSync, chmodSync } from 'node:fs';
 import { join } from 'node:path';
 
-export const ORIGIN = 'pi-live-clone-origin-v1';
-export const RECEIPT = 'pi-live-clone-receipt-v1';
+export const ORIGIN = 'pi-twin-origin-v1';
+export const RECEIPT = 'pi-twin-receipt-v1';
 export const MAX_MERGE_BYTES = 96 * 1024;
 
 /** Capture only the active path, not abandoned branches or a partially streamed reply. */
@@ -24,7 +24,7 @@ export function hasCloneActivity(sm, origin) {
   const entries = sm.getEntries();
   const start = entries.findIndex(e => e.type === 'custom' && e.customType === ORIGIN && e.data?.childId === origin.childId);
   if (start < 0) return true; // Unknown boundary is never proof of an unused clone.
-  return entries.slice(start + 1).some(e => e.type === 'message' || e.type === 'compaction' || e.type === 'branch_summary' || (e.type === 'custom_message' && e.customType !== 'pi-live-clone-notice'));
+  return entries.slice(start + 1).some(e => e.type === 'message' || e.type === 'compaction' || e.type === 'branch_summary' || (e.type === 'custom_message' && e.customType !== 'pi-twin-notice'));
 }
 
 /** Extension-generated turns can be routed differently from interactive turns.
@@ -86,7 +86,7 @@ export function createClone({ SessionManager, snapshot, sessionDir, name, model,
     manager.appendThinkingLevelChange(thinking);
     manager.appendSessionInfo(name);
     manager.appendCustomEntry(ORIGIN, lineage);
-    manager.appendCustomMessageEntry('pi-live-clone-notice',
+    manager.appendCustomMessageEntry('pi-twin-notice',
       `You are ${name}, an independent live clone of ${lineage.parentName}. ` +
       (busy ? 'Your context stops before the prompt that started the original\'s current task. ' : '') +
       'The original remains active. Wait for your own user request; do not resume or repeat the original\'s task. ' +
@@ -129,7 +129,7 @@ export function transcriptSince(sm, origin) {
   for (const e of branch.slice(start + 1)) {
     if (e.type === 'compaction') lines.push(`[Compaction summary]\n${e.summary}`);
     if (e.type === 'branch_summary') lines.push(`[Branch summary]\n${e.summary}`);
-    if (e.type === 'custom_message' && e.customType !== 'pi-live-clone-notice') {
+    if (e.type === 'custom_message' && e.customType !== 'pi-twin-notice') {
       lines.push(`[Imported context: ${e.customType}]\n${textOf(e.content)}`);
     }
     if (e.type !== 'message') continue;

@@ -21,8 +21,8 @@ async function herdr(args) {
 }
 try {
   const before = await herdr(['agent', 'list']); restorePane = before.agents.find(a => a.focused)?.pane_id;
-  const env = { PI_CODING_AGENT_DIR: join(temp, 'config'), PI_CODING_AGENT_SESSION_DIR: join(temp, 'sessions'), PI_LIVE_CLONE_STATE_DIR: join(temp, 'state'), XDG_RUNTIME_DIR: join(temp, 'runtime'), PI_OFFLINE: '1', PI_TELEMETRY: '0' };
-  for (const d of [env.PI_CODING_AGENT_DIR, env.PI_CODING_AGENT_SESSION_DIR, env.PI_LIVE_CLONE_STATE_DIR, env.XDG_RUNTIME_DIR, join(env.PI_CODING_AGENT_DIR, 'extensions')]) mkdirSync(d, { recursive: true, mode: 0o700 });
+  const env = { PI_CODING_AGENT_DIR: join(temp, 'config'), PI_CODING_AGENT_SESSION_DIR: join(temp, 'sessions'), PI_TWIN_STATE_DIR: join(temp, 'state'), XDG_RUNTIME_DIR: join(temp, 'runtime'), PI_OFFLINE: '1', PI_TELEMETRY: '0' };
+  for (const d of [env.PI_CODING_AGENT_DIR, env.PI_CODING_AGENT_SESSION_DIR, env.PI_TWIN_STATE_DIR, env.XDG_RUNTIME_DIR, join(env.PI_CODING_AGENT_DIR, 'extensions')]) mkdirSync(d, { recursive: true, mode: 0o700 });
   const provider = readFileSync(join(root, 'tests/fixtures/mock-provider.ts'), 'utf8').replace("if (!process.env.LIVE_CLONE_TEST_URL?.startsWith('http://127.0.0.1:')) throw new Error('Test provider requires loopback URL');", '').replace('process.env.LIVE_CLONE_TEST_URL', "'http://127.0.0.1:9/v1'");
   writeFileSync(join(env.PI_CODING_AGENT_DIR, 'extensions', 'test-provider.ts'), provider);
   const label = `LiveCloneTest_${Date.now()}`;
@@ -58,7 +58,7 @@ try {
   const info = await herdr(['agent', 'get', child.host.paneId]);
   assert.equal(cloneState.sessionId, child.childId);
   assert.equal(info.agent.tokens?.name, label + '[a]', JSON.stringify(info));
-  assert.equal(info.agent.tokens?.live_clone_session, child.childId);
+  assert.equal(info.agent.tokens?.twin_session, child.childId);
   console.log('PASS: actual Herdr creates two independent Pi tabs; original survives; clone named, idle, correct cwd/model/effort. No model calls. Native context-menu clicks not exercised.');
 } finally {
   // Recover tabs even if a launch was uncertain; inspect only test-owned cwd.

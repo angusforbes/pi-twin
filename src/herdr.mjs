@@ -30,7 +30,7 @@ export function createHerdr({ env = process.env, run = exec, extensionPath } = {
       const createArgs = ['tab', 'create', '--workspace', workspace, '--cwd', child.cwd, '--label', child.name, '--focus'];
       // The Herdr server's environment may differ from this Pi's configuration.
       // Carry only explicit config/state selectors, never session IDs or credentials.
-      for (const key of ['PI_CODING_AGENT_DIR', 'PI_CODING_AGENT_SESSION_DIR', 'PI_LIVE_CLONE_STATE_DIR', 'XDG_STATE_HOME', 'XDG_RUNTIME_DIR', 'PI_OFFLINE', 'PI_TELEMETRY']) {
+      for (const key of ['PI_CODING_AGENT_DIR', 'PI_CODING_AGENT_SESSION_DIR', 'PI_TWIN_STATE_DIR', 'XDG_STATE_HOME', 'XDG_RUNTIME_DIR', 'PI_OFFLINE', 'PI_TELEMETRY']) {
         if (env[key]) createArgs.push('--env', `${key}=${env[key]}`);
       }
       const created = await call(createArgs);
@@ -53,11 +53,11 @@ export function createHerdr({ env = process.env, run = exec, extensionPath } = {
     /** @param {{ name?: string, sessionId?: string, clone?: boolean, enabled?: boolean }} [options] */
     async publish({ name, sessionId, clone = false, enabled = true } = {}) {
       if (!paneId) return;
-      const args = ['pane', 'report-metadata', paneId, '--source', 'pi-live-clone', '--applies-to-source', 'herdr:pi'];
-      if (enabled) args.push('--token', 'live_clone=1'); else args.push('--clear-token', 'live_clone', '--clear-token', 'live_clone_parent', '--clear-token', 'live_clone_session', '--clear-token', 'name');
-      if (enabled && sessionId) args.push('--token', `live_clone_session=${sessionId}`);
-      if (clone && enabled) args.push('--token', 'live_clone_parent=1');
-      else if (enabled) args.push('--clear-token', 'live_clone_parent', '--clear-token', 'name');
+      const args = ['pane', 'report-metadata', paneId, '--source', 'pi-twin', '--applies-to-source', 'herdr:pi'];
+      if (enabled) args.push('--token', 'twin=1'); else args.push('--clear-token', 'twin', '--clear-token', 'twin_parent', '--clear-token', 'twin_session', '--clear-token', 'name');
+      if (enabled && sessionId) args.push('--token', `twin_session=${sessionId}`);
+      if (clone && enabled) args.push('--token', 'twin_parent=1');
+      else if (enabled) args.push('--clear-token', 'twin_parent', '--clear-token', 'name');
       // Forked sessions may be ignored by other naming integrations. Publish a
       // display token instead of agent.rename, whose aliases forbid uppercase.
       if (clone && name && enabled) args.push('--token', `name=${name}`);

@@ -10,7 +10,7 @@ for (let i = 0; i < args.length; i += 2) {
   if (options.has(args[i])) fail('Duplicate argument');
   options.set(args[i], args[i + 1]);
 }
-function fail(message) { console.error(`${message}\nUsage: pi-live-clone clone|merge|status --pane ID [--id REQUEST_ID] [--socket HERDR_SOCKET]\n       pi-live-clone receipt --session SESSION_ID --id MERGE_ID`); process.exit(1); }
+function fail(message) { console.error(`${message}\nUsage: pi-twin clone|merge|status --pane ID [--id REQUEST_ID] [--socket HERDR_SOCKET]\n       pi-twin receipt --session SESSION_ID --id MERGE_ID`); process.exit(1); }
 if (!['clone', 'merge', 'status', 'receipt'].includes(operation)) fail('Choose an operation');
 if (Number(options.has('--pane')) + Number(options.has('--session')) !== 1) fail('Choose exactly one --pane or --session');
 if (operation === 'receipt' && !options.has('--id')) fail('receipt requires --id');
@@ -28,6 +28,6 @@ try {
     process.exitCode = 2;
   }
 } catch (error) {
-  console.error(`pi-live-clone: ${error.message}${operation === 'clone' ? `\nClone request ID: ${operationId}. Preserve this ID when checking/retrying an uncertain request; a fresh ID creates a different clone.` : ''}`);
+  console.error(`pi-twin: ${error.message}${operation === 'clone' ? `\nClone request ID: ${operationId}. Preserve this ID when checking/retrying an uncertain request; a fresh ID creates a different clone.` : ''}`);
   process.exitCode = 1;
 }

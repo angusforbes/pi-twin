@@ -7,7 +7,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { runtimeDir, startEndpoint } from '../src/ipc.mjs';
 const exec = promisify(execFile);
-const cli = resolve('bin/pi-live-clone.mjs');
+const cli = resolve('bin/pi-twin.mjs');
 async function fixture(t, handle) {
   const temp = await mkdtemp(join(tmpdir(), 'lc-cli-')); t.after(() => rm(temp, { recursive: true, force: true }));
   const env = { ...process.env, XDG_RUNTIME_DIR: temp, HERDR_SOCKET_PATH: '/test/herdr.sock' };

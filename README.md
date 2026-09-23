@@ -34,7 +34,7 @@ Or register the package for future Pi sessions: `pi install /absolute/path/to/pi
 
 Existing Pi sessions must load the extension before they can be cloned through its external control interface. Use `/reload` at an appropriate boundary. Do not send reload keystrokes into a busy agent's editor.
 
-For the external CLI, put `bin/pi-live-clone.mjs` on PATH as `pi-twin` (for example using a user-owned symlink), or invoke it directly with Node. The package also provides the legacy `pi-live-clone` executable for the existing Herdr menu adapter. The CLI itself has no Pi runtime dependency.
+For the external CLI, put `bin/pi-twin.mjs` on PATH as `pi-twin` (for example using a user-owned symlink), or invoke it directly with Node. The Herdr menu adapter uses this same executable. The CLI itself has no Pi runtime dependency.
 
 Nothing in these instructions requires restarting Herdr. **Installing a patched Herdr binary for native tab-menu entries is a separate deployment decision.**
 
@@ -74,14 +74,12 @@ The extension exposes a private, local Unix socket while the session is running.
 
 Use `--session SESSION_ID` instead of `--pane` for stable targeting. `--socket HERDR_SOCKET` disambiguates Herdr instances. `--id REQUEST_ID` makes an external clone request safely identifiable; an ambiguous launch is retained, not automatically retried.
 
-The extension advertises `live_clone=1`, `live_clone_session=<session ID>`, and (on clones) `live_clone_parent=1` pane metadata. Menu adapters pass `--expected-session ID` to refuse an action if that pane switched sessions after the menu opened. The optional Herdr patch adds native context-menu actions using those capabilities. Unpatched Herdr still works through `/split` and the CLI. Never use `herdr agent prompt` as a substitute for this private control channel on a busy source.
+The extension advertises `twin=1`, `twin_session=<session ID>`, and (on clones) `twin_parent=1` pane metadata. Menu adapters pass `--expected-session ID` to refuse an action if that pane switched sessions after the menu opened. The optional Herdr patch adds native context-menu actions using those capabilities. Unpatched Herdr still works through `/split` and the CLI. Never use `herdr agent prompt` as a substitute for this private control channel on a busy source.
 
 ## Storage and security
 
-The original `pi-live-clone` storage paths, environment selectors and protocol identifiers are intentionally retained. Renaming the package does not strand existing twins or pending handoffs.
-
-- Endpoint descriptors and sockets: `$XDG_RUNTIME_DIR/pi-live-clone`, or a uid-specific private temporary directory. Descriptors are 0600, directories 0700, requests require session identity and an endpoint token.
-- Durable lineage, name reservations, and merge queues: `$XDG_STATE_HOME/pi-live-clone`, default `~/.local/state/pi-live-clone`. `PI_LIVE_CLONE_STATE_DIR` overrides this for tests/development. Do not delete while pending handoffs matter.
+- Endpoint descriptors and sockets: `$XDG_RUNTIME_DIR/pi-twin`, or a uid-specific private temporary directory. Descriptors are 0600, directories 0700, requests require session identity and an endpoint token.
+- Durable lineage, name reservations, and merge queues: `$XDG_STATE_HOME/pi-twin`, default `~/.local/state/pi-twin`. `PI_TWIN_STATE_DIR` overrides this for tests/development. Do not delete while pending handoffs matter.
 - Clone conversations: normal Pi session directory, with a fresh ID, original session path, and this extension's origin marker.
 - Startup claims fail closed rather than stealing a possibly live lock. If a process crashes during the brief endpoint-startup window, the error identifies the leftover `.json.lock`; verify its process is gone before manually removing that one claim. Ordinary stale endpoint descriptors are recovered automatically.
 - Removing the extension stops control endpoints; saved conversations remain normal Pi sessions. Pending handoffs require loading the extension again in the original session.

@@ -75,7 +75,7 @@ export class Controller {
     return this.merges.get(m.id);
   }
   delivered(id) {
-    return this.ctx.sessionManager.getEntries().some(e => e.type === 'custom_message' && e.customType === 'pi-live-clone-merge' && e.details?.mergeId === id && e.details?.parentId === this.sessionId);
+    return this.ctx.sessionManager.getEntries().some(e => e.type === 'custom_message' && e.customType === 'pi-twin-merge' && e.details?.mergeId === id && e.details?.parentId === this.sessionId);
   }
   drain() {
     this.assertCurrent();
@@ -88,7 +88,7 @@ export class Controller {
         continue;
       }
       const m = record.envelope;
-      this.pi.sendMessage({ customType: 'pi-live-clone-merge', content: formatMerge(m), display: true, details: { mergeId: m.id, childId: m.childId, parentId: this.sessionId } }, { triggerTurn: false });
+      this.pi.sendMessage({ customType: 'pi-twin-merge', content: formatMerge(m), display: true, details: { mergeId: m.id, childId: m.childId, parentId: this.sessionId } }, { triggerTurn: false });
       if (!this.delivered(m.id)) throw new Error('Pi has not confirmed the handoff append; retained in durable queue');
       this.merges.put({ ...record, status: 'delivered', deliveredAt: new Date().toISOString() });
       if (m.act) {

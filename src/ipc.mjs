@@ -1,5 +1,5 @@
 /**
- * Private Unix-socket IPC for pi-live-clone.
+ * Private Unix-socket IPC for pi-twin.
  *
  * Lets the Herdr out-of-band CLI communicate with a running Pi agent session
  * without terminal keystrokes. All communication is local, same-user only.
@@ -240,8 +240,8 @@ function handleConnection(sock, opts) {
 /**
  * Return (and create if needed) the private runtime directory for this user.
  *
- * Uses `$XDG_RUNTIME_DIR/pi-live-clone` when set, otherwise
- * `os.tmpdir()/pi-live-clone-<uid>`.
+ * Uses `$XDG_RUNTIME_DIR/pi-twin` when set, otherwise
+ * `os.tmpdir()/pi-twin-<uid>`.
  *
  * Validates: real directory (not a symlink), owned by current uid, mode 0700.
  * Chmods only dirs we own.
@@ -252,8 +252,8 @@ function handleConnection(sock, opts) {
 export async function runtimeDir(env = process.env) {
   const uid  = myUid();
   const base = env.XDG_RUNTIME_DIR
-    ? path.join(env.XDG_RUNTIME_DIR, 'pi-live-clone')
-    : path.join(os.tmpdir(), `pi-live-clone-${uid}`);
+    ? path.join(env.XDG_RUNTIME_DIR, 'pi-twin')
+    : path.join(os.tmpdir(), `pi-twin-${uid}`);
   return ensurePrivateDir(base);
 }
 

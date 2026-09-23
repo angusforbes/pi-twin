@@ -1,5 +1,5 @@
 diff --git c/docs/next/CHANGELOG.md w/docs/next/CHANGELOG.md
-index 05f3680..ea42eda 100644
+index 05f3680..b3f8da3 100644
 --- c/docs/next/CHANGELOG.md
 +++ w/docs/next/CHANGELOG.md
 @@ -2,6 +2,9 @@
@@ -7,32 +7,32 @@ index 05f3680..ea42eda 100644
  ## Unreleased
  
 +### Added
-+- Right-clicking a tab in the desktop sidebar now shows **Agent Split** (for any session with the `live_clone` token) or **Agent Merge** (additionally for clone sessions) when the `pi-live-clone` package is installed and the pane carries its metadata token. Selecting the item invokes `pi-live-clone clone --pane <id>` or `pi-live-clone merge --pane <id>` asynchronously without blocking the TUI. Errors from a missing binary or non-zero exit are shown in the config-diagnostic overlay. Multi-pane tabs are excluded to avoid agent ambiguity.
++- Right-clicking a tab in the desktop sidebar now shows **Agent Split** (for any session with the `twin` token) or **Agent Merge** (additionally for clone sessions) when the `pi-twin` package is installed and the pane carries its metadata token. Selecting the item invokes `pi-twin clone --pane <id>` or `pi-twin merge --pane <id>` asynchronously without blocking the TUI. Errors from a missing binary or non-zero exit are shown in the config-diagnostic overlay. Multi-pane tabs are excluded to avoid agent ambiguity.
 +
  ## [0.8.2] - 2026-08-19
  
  ### Added
 diff --git c/src/app/actions.rs w/src/app/actions.rs
-index 186faee..0241477 100644
+index 186faee..8d82a38 100644
 --- c/src/app/actions.rs
 +++ w/src/app/actions.rs
 @@ -2991,6 +2991,7 @@ impl AppState {
              AppEvent::PluginCommandFinished { .. } => Vec::new(),
              AppEvent::SearchPaneAiFinished { .. } => Vec::new(),
              AppEvent::ConversationLaunchRetry { .. } => Vec::new(),
-+            AppEvent::LiveCloneCommandFinished { .. } => Vec::new(),
++            AppEvent::TwinCommandFinished { .. } => Vec::new(),
          }
      }
  
 diff --git c/src/app/api.rs w/src/app/api.rs
-index 9759f4b..3e044fe 100644
+index 9759f4b..21d8375 100644
 --- c/src/app/api.rs
 +++ w/src/app/api.rs
 @@ -219,6 +219,17 @@ impl App {
              return Vec::new();
          }
  
-+        if let AppEvent::LiveCloneCommandFinished { action, result } = ev {
++        if let AppEvent::TwinCommandFinished { action, result } = ev {
 +            if let Err(message) = result {
 +                self.state.config_diagnostic = Some(format!("{action} failed: {message}"));
 +                self.config_diagnostic_deadline =
@@ -47,16 +47,14 @@ index 9759f4b..3e044fe 100644
              if self
                  .state
 diff --git c/src/app/input/modal.rs w/src/app/input/modal.rs
-index 343fa99..b05fe36 100644
+index 343fa99..5228717 100644
 --- c/src/app/input/modal.rs
 +++ w/src/app/input/modal.rs
-@@ -6,7 +6,8 @@ use ratatui::layout::Rect;
- use crate::{
+@@ -7,6 +7,7 @@ use crate::{
      app::{
          state::{
--            AppState, ContextMenuKind, ContextMenuState, MenuListState, Mode, NavigatorStateFilter,
-+            AppState, ContextMenuKind, ContextMenuState, LiveCloneAction, MenuListState, Mode,
-+            NavigatorStateFilter,
+             AppState, ContextMenuKind, ContextMenuState, MenuListState, Mode, NavigatorStateFilter,
++            TwinAction,
          },
          App,
      },
@@ -104,12 +102,12 @@ index 343fa99..b05fe36 100644
          }
 +        (
 +            ContextMenuKind::Tab {
-+                live_clone_pane: Some(ref info),
++                twin_pane: Some(ref info),
 +                ..
 +            },
 +            Some("Agent Split"),
 +        ) => {
-+            state.pending_live_clone_action = Some(LiveCloneAction::Clone {
++            state.pending_twin_action = Some(TwinAction::Clone {
 +                public_pane_id: info.public_pane_id.clone(),
 +                session_id: info.session_id.clone(),
 +            });
@@ -117,12 +115,12 @@ index 343fa99..b05fe36 100644
 +        }
 +        (
 +            ContextMenuKind::Tab {
-+                live_clone_pane: Some(ref info),
++                twin_pane: Some(ref info),
 +                ..
 +            },
 +            Some("Agent Merge"),
 +        ) => {
-+            state.pending_live_clone_action = Some(LiveCloneAction::Merge {
++            state.pending_twin_action = Some(TwinAction::Merge {
 +                public_pane_id: info.public_pane_id.clone(),
 +                session_id: info.session_id.clone(),
 +            });
@@ -172,12 +170,12 @@ index 343fa99..b05fe36 100644
              }
 +            (
 +                ContextMenuKind::Tab {
-+                    live_clone_pane: Some(ref info),
++                    twin_pane: Some(ref info),
 +                    ..
 +                },
 +                Some("Agent Split"),
 +            ) => {
-+                self.state.pending_live_clone_action = Some(LiveCloneAction::Clone {
++                self.state.pending_twin_action = Some(TwinAction::Clone {
 +                    public_pane_id: info.public_pane_id.clone(),
 +                    session_id: info.session_id.clone(),
 +                });
@@ -185,13 +183,13 @@ index 343fa99..b05fe36 100644
 +            }
 +            (
 +                ContextMenuKind::Tab {
-+                    live_clone_pane: Some(ref info),
++                    twin_pane: Some(ref info),
 +                    ..
 +                },
 +                Some("Agent Merge"),
 +            ) => {
 +                // Dispatch revalidates identity before focusing the target pane.
-+                self.state.pending_live_clone_action = Some(LiveCloneAction::Merge {
++                self.state.pending_twin_action = Some(TwinAction::Merge {
 +                    public_pane_id: info.public_pane_id.clone(),
 +                    session_id: info.session_id.clone(),
 +                });
@@ -204,7 +202,7 @@ index 343fa99..b05fe36 100644
              kind: ContextMenuKind::Tab {
                  ws_idx: 0,
                  tab_idx: 0,
-+                live_clone_pane: None,
++                twin_pane: None,
              },
              x: 0,
              y: 0,
@@ -215,12 +213,12 @@ index 343fa99..b05fe36 100644
 +
 +    // ── Live-clone context menu tests ────────────────────────────────────────
 +
-+    fn tab_menu(live_clone_pane: Option<crate::app::state::LiveClonePaneInfo>) -> ContextMenuState {
++    fn tab_menu(twin_pane: Option<crate::app::state::TwinPaneInfo>) -> ContextMenuState {
 +        ContextMenuState {
 +            kind: ContextMenuKind::Tab {
 +                ws_idx: 0,
 +                tab_idx: 0,
-+                live_clone_pane,
++                twin_pane,
 +            },
 +            x: 0,
 +            y: 0,
@@ -230,8 +228,8 @@ index 343fa99..b05fe36 100644
 +
 +    const TEST_SESSION: &str = "test-session-uuid-5678";
 +
-+    fn stub_pane_info(is_clone: bool) -> crate::app::state::LiveClonePaneInfo {
-+        crate::app::state::LiveClonePaneInfo {
++    fn stub_pane_info(is_clone: bool) -> crate::app::state::TwinPaneInfo {
++        crate::app::state::TwinPaneInfo {
 +            pane_id: crate::layout::PaneId::alloc(),
 +            public_pane_id: "w1:p3".to_string(),
 +            session_id: TEST_SESSION.to_string(),
@@ -240,7 +238,7 @@ index 343fa99..b05fe36 100644
 +    }
 +
 +    #[test]
-+    fn tab_menu_items_without_live_clone_are_new_rename_close() {
++    fn tab_menu_items_without_twin_are_new_rename_close() {
 +        let menu = tab_menu(None);
 +        assert_eq!(menu.items(), vec!["New tab", "Rename", "Close"]);
 +    }
@@ -281,8 +279,8 @@ index 343fa99..b05fe36 100644
 +            .unwrap();
 +        apply_context_menu_action(&mut state, &mut runtimes, menu, idx);
 +        assert_eq!(
-+            state.pending_live_clone_action,
-+            Some(crate::app::state::LiveCloneAction::Clone {
++            state.pending_twin_action,
++            Some(crate::app::state::TwinAction::Clone {
 +                public_pane_id: public_id,
 +                session_id: TEST_SESSION.to_string(),
 +            })
@@ -307,8 +305,8 @@ index 343fa99..b05fe36 100644
 +            .unwrap();
 +        apply_context_menu_action(&mut state, &mut runtimes, menu, idx);
 +        assert_eq!(
-+            state.pending_live_clone_action,
-+            Some(crate::app::state::LiveCloneAction::Merge {
++            state.pending_twin_action,
++            Some(crate::app::state::TwinAction::Merge {
 +                public_pane_id: public_id,
 +                session_id: TEST_SESSION.to_string(),
 +            })
@@ -330,8 +328,8 @@ index 343fa99..b05fe36 100644
 +            .unwrap();
 +        app.apply_context_menu_action_via_api(menu, idx);
 +        assert_eq!(
-+            app.state.pending_live_clone_action,
-+            Some(crate::app::state::LiveCloneAction::Clone {
++            app.state.pending_twin_action,
++            Some(crate::app::state::TwinAction::Clone {
 +                public_pane_id: public_id,
 +                session_id: TEST_SESSION.to_string(),
 +            })
@@ -339,21 +337,19 @@ index 343fa99..b05fe36 100644
 +    }
  }
 diff --git c/src/app/input/mouse.rs w/src/app/input/mouse.rs
-index e5add39..f8841ef 100644
+index e5add39..6228428 100644
 --- c/src/app/input/mouse.rs
 +++ w/src/app/input/mouse.rs
-@@ -6,8 +6,8 @@ use tracing::warn;
+@@ -6,7 +6,7 @@ use tracing::warn;
  use crate::{
      app::state::{
          AgentPanelSort, AppState, ContextMenuKind, ContextMenuState, DragState, DragTarget,
 -        MenuListState, Mode, RightClickPassthroughGesture, TabPressState, ViewLayout,
--        WorkspacePressState,
-+        LiveClonePaneInfo, MenuListState, Mode, RightClickPassthroughGesture, TabPressState,
-+        ViewLayout, WorkspacePressState,
++        MenuListState, Mode, RightClickPassthroughGesture, TabPressState, TwinPaneInfo, ViewLayout,
+         WorkspacePressState,
      },
      layout::{PaneInfo, SplitBorder},
-     selection::Selection,
-@@ -70,6 +70,45 @@ enum MobileMouseResult {
+@@ -70,6 +70,42 @@ enum MobileMouseResult {
  }
  
  impl AppState {
@@ -361,12 +357,12 @@ index e5add39..f8841ef 100644
 +    ///
 +    /// Eligibility requires **all** of:
 +    /// - exactly one pane in the tab (multi-pane is refused to avoid agent ambiguity),
-+    /// - `live_clone=1` metadata token set by the pi-live-clone extension, and
-+    /// - a non-empty `live_clone_session` token that will be passed to the CLI as
++    /// - `twin=1` metadata token set by the pi-twin extension, and
++    /// - a non-empty `twin_session` token that will be passed to the CLI as
 +    ///   `--expected-session` and re-checked at dispatch time to detect session reuse.
 +    ///
 +    /// Returns `None` when any condition is not met.
-+    fn live_clone_pane_for_tab(&self, ws_idx: usize, tab_idx: usize) -> Option<LiveClonePaneInfo> {
++    fn twin_pane_for_tab(&self, ws_idx: usize, tab_idx: usize) -> Option<TwinPaneInfo> {
 +        let ws = self.workspaces.get(ws_idx)?;
 +        let tab = ws.tabs.get(tab_idx)?;
 +        if tab.panes.len() != 1 {
@@ -374,21 +370,18 @@ index e5add39..f8841ef 100644
 +        }
 +        let (&pane_id, pane_state) = tab.panes.iter().next()?;
 +        let terminal = self.terminals.get(&pane_state.attached_terminal_id)?;
-+        if terminal.metadata_tokens.value("live_clone") != Some("1") {
++        if terminal.metadata_tokens.value("twin") != Some("1") {
 +            return None;
 +        }
-+        let session_id = terminal
-+            .metadata_tokens
-+            .value("live_clone_session")
-+            .unwrap_or("");
++        let session_id = terminal.metadata_tokens.value("twin_session").unwrap_or("");
 +        if session_id.is_empty() {
 +            return None;
 +        }
 +        let session_id = session_id.to_string();
 +        let pane_number = ws.public_pane_number(pane_id)?;
 +        let public_pane_id = crate::workspace::public_pane_id_for_number(&ws.id, pane_number);
-+        let is_clone = terminal.metadata_tokens.value("live_clone_parent") == Some("1");
-+        Some(LiveClonePaneInfo {
++        let is_clone = terminal.metadata_tokens.value("twin_parent") == Some("1");
++        Some(TwinPaneInfo {
 +            pane_id,
 +            public_pane_id,
 +            session_id,
@@ -399,41 +392,41 @@ index e5add39..f8841ef 100644
      pub(crate) fn handle_pane_mouse_only(
          &mut self,
          terminal_runtimes: &TerminalRuntimeRegistry,
-@@ -1094,8 +1133,13 @@ impl AppState {
+@@ -1094,8 +1130,13 @@ impl AppState {
                  if let (Some(ws_idx), Some(tab_idx)) =
                      (self.active, self.tab_at(mouse.column, mouse.row))
                  {
-+                    let live_clone_pane = self.live_clone_pane_for_tab(ws_idx, tab_idx);
++                    let twin_pane = self.twin_pane_for_tab(ws_idx, tab_idx);
                      self.context_menu = Some(ContextMenuState {
 -                        kind: ContextMenuKind::Tab { ws_idx, tab_idx },
 +                        kind: ContextMenuKind::Tab {
 +                            ws_idx,
 +                            tab_idx,
-+                            live_clone_pane,
++                            twin_pane,
 +                        },
                          x: mouse.column,
                          y: mouse.row,
                          list: MenuListState::new(0),
-@@ -4195,7 +4239,8 @@ mod tests {
+@@ -4195,7 +4236,8 @@ mod tests {
              menu.kind,
              ContextMenuKind::Tab {
                  ws_idx: 0,
 -                tab_idx: 1
 +                tab_idx: 1,
-+                live_clone_pane: None,
++                twin_pane: None,
              }
          );
          assert_eq!(app.state.mode, Mode::ContextMenu);
-@@ -4775,4 +4820,128 @@ mod tests {
+@@ -4775,4 +4817,124 @@ mod tests {
  
          assert_eq!(wheel_routing(input_state), WheelRouting::HostScroll);
      }
 +
-+    // ── live_clone_pane_for_tab eligibility tests ──────────────────────────
++    // ── twin_pane_for_tab eligibility tests ──────────────────────────
 +
 +    const TEST_SESSION_ID: &str = "test-session-uuid-1234";
 +
-+    fn state_with_live_clone_token(is_clone: bool) -> crate::app::state::AppState {
++    fn state_with_twin_token(is_clone: bool) -> crate::app::state::AppState {
 +        let mut state = crate::app::state::AppState::test_new();
 +        state.workspaces = vec![Workspace::test_new("main")];
 +        state.active = Some(0);
@@ -449,37 +442,37 @@ index e5add39..f8841ef 100644
 +        let now = std::time::Instant::now();
 +        let terminal = state.terminals.get_mut(&terminal_id).unwrap();
 +        let mut patch = std::collections::HashMap::new();
-+        patch.insert("live_clone".into(), Some("1".into()));
-+        patch.insert("live_clone_session".into(), Some(TEST_SESSION_ID.into()));
++        patch.insert("twin".into(), Some("1".into()));
++        patch.insert("twin_session".into(), Some(TEST_SESSION_ID.into()));
 +        if is_clone {
-+            patch.insert("live_clone_parent".into(), Some("1".into()));
++            patch.insert("twin_parent".into(), Some("1".into()));
 +        }
 +        terminal.metadata_tokens.patch(patch, None, now);
 +        state
 +    }
 +
 +    #[test]
-+    fn live_clone_pane_for_tab_returns_none_without_token() {
++    fn twin_pane_for_tab_returns_none_without_token() {
 +        let state = crate::app::state::AppState::test_new();
 +        // No workspaces — should return None safely.
-+        assert!(state.live_clone_pane_for_tab(0, 0).is_none());
++        assert!(state.twin_pane_for_tab(0, 0).is_none());
 +    }
 +
 +    #[test]
-+    fn live_clone_pane_for_tab_returns_none_when_token_absent() {
++    fn twin_pane_for_tab_returns_none_when_token_absent() {
 +        let mut state = crate::app::state::AppState::test_new();
 +        state.workspaces = vec![Workspace::test_new("main")];
 +        state.ensure_test_terminals();
 +        // No metadata token patched — should return None.
-+        assert!(state.live_clone_pane_for_tab(0, 0).is_none());
++        assert!(state.twin_pane_for_tab(0, 0).is_none());
 +    }
 +
 +    #[test]
-+    fn live_clone_pane_for_tab_returns_none_without_session_token() {
++    fn twin_pane_for_tab_returns_none_without_session_token() {
 +        let mut state = crate::app::state::AppState::test_new();
 +        state.workspaces = vec![Workspace::test_new("main")];
 +        state.ensure_test_terminals();
-+        // live_clone=1 but no live_clone_session — not eligible.
++        // twin=1 but no twin_session — not eligible.
 +        let terminal_id = state.workspaces[0].tabs[0]
 +            .panes
 +            .values()
@@ -488,22 +481,20 @@ index e5add39..f8841ef 100644
 +            .attached_terminal_id
 +            .clone();
 +        let mut patch = std::collections::HashMap::new();
-+        patch.insert("live_clone".into(), Some("1".into()));
++        patch.insert("twin".into(), Some("1".into()));
 +        state
 +            .terminals
 +            .get_mut(&terminal_id)
 +            .unwrap()
 +            .metadata_tokens
 +            .patch(patch, None, std::time::Instant::now());
-+        assert!(state.live_clone_pane_for_tab(0, 0).is_none());
++        assert!(state.twin_pane_for_tab(0, 0).is_none());
 +    }
 +
 +    #[test]
-+    fn live_clone_pane_for_tab_original_captures_session_id() {
-+        let state = state_with_live_clone_token(false);
-+        let info = state
-+            .live_clone_pane_for_tab(0, 0)
-+            .expect("should be eligible");
++    fn twin_pane_for_tab_original_captures_session_id() {
++        let state = state_with_twin_token(false);
++        let info = state.twin_pane_for_tab(0, 0).expect("should be eligible");
 +        assert!(
 +            !info.is_clone,
 +            "original pane should not be marked as clone"
@@ -516,18 +507,16 @@ index e5add39..f8841ef 100644
 +    }
 +
 +    #[test]
-+    fn live_clone_pane_for_tab_clone_pane_is_marked_as_clone_and_captures_session() {
-+        let state = state_with_live_clone_token(true);
-+        let info = state
-+            .live_clone_pane_for_tab(0, 0)
-+            .expect("should be eligible");
++    fn twin_pane_for_tab_clone_pane_is_marked_as_clone_and_captures_session() {
++        let state = state_with_twin_token(true);
++        let info = state.twin_pane_for_tab(0, 0).expect("should be eligible");
 +        assert!(info.is_clone, "clone pane should be marked as clone");
 +        assert_eq!(info.session_id, TEST_SESSION_ID);
 +    }
 +
 +    #[test]
-+    fn live_clone_pane_for_tab_returns_none_for_multi_pane_tab() {
-+        let mut state = state_with_live_clone_token(false);
++    fn twin_pane_for_tab_returns_none_for_multi_pane_tab() {
++        let mut state = state_with_twin_token(false);
 +        // Split the tab to create a second pane.
 +        state.workspaces[0].test_split(ratatui::layout::Direction::Horizontal);
 +        state.ensure_test_terminals();
@@ -541,35 +530,35 @@ index e5add39..f8841ef 100644
 +        for tid in &terminal_ids {
 +            if let Some(t) = state.terminals.get_mut(tid) {
 +                let mut patch = std::collections::HashMap::new();
-+                patch.insert("live_clone".into(), Some("1".into()));
-+                patch.insert("live_clone_session".into(), Some(TEST_SESSION_ID.into()));
++                patch.insert("twin".into(), Some("1".into()));
++                patch.insert("twin_session".into(), Some(TEST_SESSION_ID.into()));
 +                t.metadata_tokens.patch(patch, None, now);
 +            }
 +        }
 +        // Multi-pane tab must return None to avoid agent ambiguity.
 +        assert!(
-+            state.live_clone_pane_for_tab(0, 0).is_none(),
++            state.twin_pane_for_tab(0, 0).is_none(),
 +            "multi-pane tab must not produce an eligibility result"
 +        );
 +    }
  }
 diff --git c/src/app/mod.rs w/src/app/mod.rs
-index 3048f3d..3961113 100644
+index 3048f3d..8771b61 100644
 --- c/src/app/mod.rs
 +++ w/src/app/mod.rs
-@@ -19,6 +19,7 @@ mod creation;
- mod git_refresh;
- mod ids;
- mod input;
-+mod live_clone;
- pub(crate) mod pane_graphics;
- mod popup;
- pub(crate) mod room;
+@@ -31,6 +31,7 @@ mod tab_bar_status;
+ mod terminal_targets;
+ mod terminal_titles;
+ mod theme_sync;
++mod twin;
+ mod window_title;
+ mod worktrees;
+ 
 @@ -567,6 +568,7 @@ impl App {
              request_submit_worktree_create: false,
              request_submit_worktree_open: false,
              request_submit_worktree_remove: false,
-+            pending_live_clone_action: None,
++            pending_twin_action: None,
              request_reload_config: false,
              request_client_config_reload: false,
              request_clipboard_write: None,
@@ -577,8 +566,8 @@ index 3048f3d..3961113 100644
                  needs_render = true;
              }
  
-+            if let Some(action) = self.state.pending_live_clone_action.take() {
-+                self.spawn_live_clone_command(action);
++            if let Some(action) = self.state.pending_twin_action.take() {
++                self.spawn_twin_command(action);
 +                needs_render = true;
 +            }
 +
@@ -586,7 +575,7 @@ index 3048f3d..3961113 100644
                  self.state.request_submit_worktree_create = false;
                  self.submit_worktree_create_via_api();
 diff --git c/src/app/state.rs w/src/app/state.rs
-index 3706556..ee61608 100644
+index 3706556..20e2d11 100644
 --- c/src/app/state.rs
 +++ w/src/app/state.rs
 @@ -1197,6 +1197,37 @@ pub(crate) struct TabPressState {
@@ -594,24 +583,24 @@ index 3706556..ee61608 100644
  }
  
 +/// Live-clone pane info captured when the tab context menu is opened.
-+/// Derived from pane metadata tokens set by the pi-live-clone extension.
++/// Derived from pane metadata tokens set by the pi-twin extension.
 +#[derive(Debug, Clone, PartialEq, Eq)]
-+pub struct LiveClonePaneInfo {
++pub struct TwinPaneInfo {
 +    pub pane_id: PaneId,
-+    /// Public pane identifier (e.g. `w1:p3`) passed directly to the pi-live-clone CLI.
++    /// Public pane identifier (e.g. `w1:p3`) passed directly to the pi-twin CLI.
 +    pub public_pane_id: String,
-+    /// Session identity token from `live_clone_session` metadata, captured at menu-open
++    /// Session identity token from `twin_session` metadata, captured at menu-open
 +    /// time and re-checked before dispatch to detect pane reuse by a different session.
 +    pub session_id: String,
-+    /// `true` when the pane carries `live_clone_parent=1` (this pane is itself a clone).
++    /// `true` when the pane carries `twin_parent=1` (this pane is itself a clone).
 +    pub is_clone: bool,
 +}
 +
-+/// Deferred pi-live-clone CLI action queued by the context-menu handler and
++/// Deferred pi-twin CLI action queued by the context-menu handler and
 +/// dispatched by the App event loop, which has access to `event_tx` for
 +/// background process results.
 +#[derive(Debug, Clone, PartialEq, Eq)]
-+pub enum LiveCloneAction {
++pub enum TwinAction {
 +    Clone {
 +        public_pane_id: String,
 +        /// Session token captured at menu-open; revalidated before dispatch.
@@ -632,27 +621,24 @@ index 3706556..ee61608 100644
          ws_idx: usize,
          tab_idx: usize,
 +        /// Live-clone eligibility captured at menu-open time for single-pane tabs.
-+        /// `None` for multi-pane tabs or panes without the `live_clone=1` token.
-+        live_clone_pane: Option<LiveClonePaneInfo>,
++        /// `None` for multi-pane tabs or panes without the `twin=1` token.
++        twin_pane: Option<TwinPaneInfo>,
      },
      Pane {
          ws_idx: usize,
-@@ -1255,7 +1289,21 @@ impl ContextMenuState {
+@@ -1255,7 +1289,18 @@ impl ContextMenuState {
                  "Open worktree...",
                  if collapsed { "Expand" } else { "Collapse" },
              ],
 -            ContextMenuKind::Tab { .. } => vec!["New tab", "Rename", "Close"],
-+            ContextMenuKind::Tab {
-+                ref live_clone_pane,
-+                ..
-+            } => {
++            ContextMenuKind::Tab { ref twin_pane, .. } => {
 +                let mut items = vec!["New tab", "Rename", "Close"];
 +                // "Agent Split" is available for any eligible session (original or clone).
 +                // "Agent Merge" is only available for clone sessions.
-+                if live_clone_pane.is_some() {
++                if twin_pane.is_some() {
 +                    items.push("Agent Split");
 +                }
-+                if live_clone_pane.as_ref().is_some_and(|info| info.is_clone) {
++                if twin_pane.as_ref().is_some_and(|info| info.is_clone) {
 +                    items.push("Agent Merge");
 +                }
 +                items
@@ -660,24 +646,24 @@ index 3706556..ee61608 100644
              ContextMenuKind::Pane {
                  source_pane_id,
                  has_manual_label,
-@@ -1406,6 +1454,8 @@ pub struct AppState {
+@@ -1406,6 +1451,8 @@ pub struct AppState {
      pub request_submit_worktree_create: bool,
      pub request_submit_worktree_open: bool,
      pub request_submit_worktree_remove: bool,
-+    /// Deferred pi-live-clone CLI action; dispatched by the App event loop.
-+    pub pending_live_clone_action: Option<LiveCloneAction>,
++    /// Deferred pi-twin CLI action; dispatched by the App event loop.
++    pub pending_twin_action: Option<TwinAction>,
      pub request_reload_config: bool,
      /// Set when the headless server should ask attached clients to reload
      /// their client-local sound config from disk.
-@@ -1859,6 +1909,7 @@ impl AppState {
+@@ -1859,6 +1906,7 @@ impl AppState {
              request_submit_worktree_create: false,
              request_submit_worktree_open: false,
              request_submit_worktree_remove: false,
-+            pending_live_clone_action: None,
++            pending_twin_action: None,
              request_reload_config: false,
              request_client_config_reload: false,
              request_clipboard_write: None,
-@@ -2323,9 +2374,9 @@ impl AppState {
+@@ -2323,9 +2371,9 @@ impl AppState {
                  | ContextMenuKind::GitWorkspace { ws_idx, .. } => {
                      assert_workspace_index(ws_idx, "context menu workspace")
                  }
@@ -691,15 +677,15 @@ index 3706556..ee61608 100644
                      ws_idx,
                      tab_idx,
 diff --git c/src/events.rs w/src/events.rs
-index 03ba528..e3c69f6 100644
+index 03ba528..1eae35e 100644
 --- c/src/events.rs
 +++ w/src/events.rs
 @@ -180,4 +180,11 @@ pub enum AppEvent {
          generation: u64,
          result: Result<String, String>,
      },
-+    /// A background pi-live-clone CLI command (clone or merge-back) finished.
-+    LiveCloneCommandFinished {
++    /// A background pi-twin CLI command (clone or merge-back) finished.
++    TwinCommandFinished {
 +        /// Short label for error messages ("Agent Split" or "Agent Merge").
 +        action: String,
 +        /// `Ok(())` on exit code 0; `Err(message)` on spawn failure or non-zero exit.
@@ -707,35 +693,34 @@ index 03ba528..e3c69f6 100644
 +    },
  }
 diff --git c/src/server/headless.rs w/src/server/headless.rs
-index 787fee3..07979dd 100644
+index 787fee3..f01d140 100644
 --- c/src/server/headless.rs
 +++ w/src/server/headless.rs
 @@ -992,6 +992,11 @@ impl HeadlessServer {
              crate::render_prof::event("full_render_cause.deferred_worktree_dialog");
          }
  
-+        if let Some(action) = self.app.state.pending_live_clone_action.take() {
-+            self.app.spawn_live_clone_command(action);
++        if let Some(action) = self.app.state.pending_twin_action.take() {
++            self.app.spawn_twin_command(action);
 +            needs_render = true;
 +        }
 +
          if self.app.state.request_submit_worktree_create {
              self.app.state.request_submit_worktree_create = false;
              self.app.submit_worktree_create_via_api();
-@@ -5614,6 +5619,24 @@ mod tests {
+@@ -5614,6 +5619,23 @@ mod tests {
          assert!(server.app.event_rx.try_recv().is_err());
      }
  
 +    #[tokio::test]
-+    async fn headless_deferred_live_clone_is_dispatched_and_stale_target_rejected() {
++    async fn headless_deferred_twin_is_dispatched_and_stale_target_rejected() {
 +        let mut server = test_headless_server();
-+        server.app.state.pending_live_clone_action =
-+            Some(crate::app::state::LiveCloneAction::Clone {
-+                public_pane_id: "w999:p999".to_string(),
-+                session_id: "old-session".to_string(),
-+            });
++        server.app.state.pending_twin_action = Some(crate::app::state::TwinAction::Clone {
++            public_pane_id: "w999:p999".to_string(),
++            session_id: "old-session".to_string(),
++        });
 +        assert!(server.handle_deferred_requests_headless());
-+        assert!(server.app.state.pending_live_clone_action.is_none());
++        assert!(server.app.state.pending_twin_action.is_none());
 +        assert!(server
 +            .app
 +            .state
@@ -747,15 +732,15 @@ index 787fee3..07979dd 100644
      #[tokio::test]
      async fn headless_deferred_workspace_create_uses_runtime_events() {
          let event_hub = api::EventHub::default();
-diff --git 1/src/app/live_clone.rs 2/src/app/live_clone.rs
+diff --git 1/src/app/twin.rs 2/src/app/twin.rs
 new file mode 100644
-index 0000000..330332d
+index 0000000..026c431
 --- /dev/null
-+++ 2/src/app/live_clone.rs
-@@ -0,0 +1,321 @@
-+//! Background dispatch for pi-live-clone CLI actions triggered from the context menu.
++++ 2/src/app/twin.rs
+@@ -0,0 +1,320 @@
++//! Background dispatch for pi-twin CLI actions triggered from the context menu.
 +//!
-+//! The CLI binary (`pi-live-clone`) talks to the Pi extension over its private IPC socket.
++//! The CLI binary (`pi-twin`) talks to the Pi extension over its private IPC socket.
 +//! We invoke it without a shell and report results back through the App event channel so
 +//! errors appear in the config_diagnostic overlay.
 +//!
@@ -769,28 +754,28 @@ index 0000000..330332d
 +
 +use tokio::io::AsyncReadExt as _;
 +
-+use crate::app::state::LiveCloneAction;
++use crate::app::state::TwinAction;
 +use crate::app::App;
 +use crate::events::AppEvent;
 +
 +/// Name of the external CLI binary.
-+const CLI: &str = "pi-live-clone";
++const CLI: &str = "pi-twin";
 +/// Maximum bytes read from the child's stderr for error messages.
 +const STDERR_LIMIT: u64 = 16 * 1024;
 +/// Wall-clock budget for the whole child invocation (spawn → exit).
 +const TIMEOUT: Duration = Duration::from_secs(45);
 +
 +impl App {
-+    /// Validate eligibility and launch the pi-live-clone CLI as an async tokio task.
++    /// Validate eligibility and launch the pi-twin CLI as an async tokio task.
 +    ///
 +    /// ## Revalidation
 +    ///
 +    /// The pane ID and session token were captured when the context menu opened.
 +    /// Before spawning, we re-check:
-+    /// - `live_clone=1` is still present on the same pane,
-+    /// - the `live_clone_session` token still matches the captured `session_id`
++    /// - `twin=1` is still present on the same pane,
++    /// - the `twin_session` token still matches the captured `session_id`
 +    ///   (detects session replacement on pane reuse — a bool-only check cannot catch this),
-+    /// - for Merge: `live_clone_parent=1` is still set (the pane is still a clone session).
++    /// - for Merge: `twin_parent=1` is still set (the pane is still a clone session).
 +    ///
 +    /// On failure a visible error appears in the config_diagnostic overlay.
 +    ///
@@ -801,19 +786,19 @@ index 0000000..330332d
 +    ///
 +    /// ## CLI arguments
 +    ///
-+    /// `pi-live-clone clone|merge --pane <id> --expected-session <uuid> --socket <path>`
++    /// `pi-twin clone|merge --pane <id> --expected-session <uuid> --socket <path>`
 +    ///
 +    /// `--expected-session` lets the CLI refuse a stale connection if the pane was
 +    /// recycled between our validation and the CLI's own IPC handshake.
 +    /// `--socket` pins the CLI to this Herdr server's API socket, preventing
 +    /// cross-server confusion in environments with multiple running instances.
-+    pub(crate) fn spawn_live_clone_command(&mut self, action: LiveCloneAction) {
++    pub(crate) fn spawn_twin_command(&mut self, action: TwinAction) {
 +        let (subcommand, public_pane_id, session_id, action_label, is_merge) = match action {
-+            LiveCloneAction::Clone {
++            TwinAction::Clone {
 +                public_pane_id,
 +                session_id,
 +            } => ("clone", public_pane_id, session_id, "Agent Split", false),
-+            LiveCloneAction::Merge {
++            TwinAction::Merge {
 +                public_pane_id,
 +                session_id,
 +            } => ("merge", public_pane_id, session_id, "Agent Merge", true),
@@ -827,8 +812,7 @@ index 0000000..330332d
 +                    let tab_idx = ws.find_tab_index_for_pane(pane_id)?;
 +                    let pane_state = ws.tabs.get(tab_idx)?.panes.get(&pane_id)?;
 +                    let terminal = self.state.terminals.get(&pane_state.attached_terminal_id)?;
-+                    validate_live_clone_tokens(&terminal.metadata_tokens, &session_id, is_merge)
-+                        .ok()?;
++                    validate_twin_tokens(&terminal.metadata_tokens, &session_id, is_merge).ok()?;
 +                    Some((ws_idx, pane_id))
 +                });
 +
@@ -871,7 +855,7 @@ index 0000000..330332d
 +            };
 +
 +            let _ = event_tx
-+                .send(AppEvent::LiveCloneCommandFinished {
++                .send(AppEvent::TwinCommandFinished {
 +                    action: action_owned,
 +                    result: outcome,
 +                })
@@ -887,7 +871,7 @@ index 0000000..330332d
 +    session_id: &str,
 +    socket: &str,
 +) -> Result<(), String> {
-+    let argv = live_clone_argv(subcommand, pane_id, session_id, socket);
++    let argv = twin_argv(subcommand, pane_id, session_id, socket);
 +    let mut child = tokio::process::Command::new(&argv[0])
 +        .args(&argv[1..])
 +        .stdin(Stdio::null())
@@ -897,7 +881,7 @@ index 0000000..330332d
 +        .spawn()
 +        .map_err(|e| {
 +            if e.kind() == std::io::ErrorKind::NotFound {
-+                format!("`{CLI}` not found — install the pi-live-clone package")
++                format!("`{CLI}` not found — install the pi-twin package")
 +            } else {
 +                format!("could not launch `{CLI}`: {e}")
 +            }
@@ -933,7 +917,7 @@ index 0000000..330332d
 +}
 +
 +/// Build the exact argv used by production and exercised by unit tests.
-+pub(super) fn live_clone_argv(
++pub(super) fn twin_argv(
 +    subcommand: &str,
 +    pane_id: &str,
 +    session_id: &str,
@@ -952,20 +936,20 @@ index 0000000..330332d
 +}
 +
 +/// Production validation shared with tests: tokens must match the captured session.
-+pub(super) fn validate_live_clone_tokens(
++pub(super) fn validate_twin_tokens(
 +    tokens: &crate::metadata_tokens::MetadataTokens,
 +    captured_session_id: &str,
 +    is_merge: bool,
 +) -> Result<(), &'static str> {
-+    if tokens.value("live_clone") != Some("1") {
-+        return Err("live_clone token no longer present");
++    if tokens.value("twin") != Some("1") {
++        return Err("twin token no longer present");
 +    }
-+    let current = tokens.value("live_clone_session").unwrap_or("");
++    let current = tokens.value("twin_session").unwrap_or("");
 +    if current.is_empty() || current != captured_session_id {
-+        return Err("live_clone_session token changed since menu was opened");
++        return Err("twin_session token changed since menu was opened");
 +    }
-+    if is_merge && tokens.value("live_clone_parent") != Some("1") {
-+        return Err("live_clone_parent token no longer present (pane is not a clone session)");
++    if is_merge && tokens.value("twin_parent") != Some("1") {
++        return Err("twin_parent token no longer present (pane is not a clone session)");
 +    }
 +    Ok(())
 +}
@@ -1006,8 +990,8 @@ index 0000000..330332d
 +
 +    #[test]
 +    fn argv_clone_has_expected_shape() {
-+        let argv = live_clone_argv("clone", "w1:p3", "uuid-abc", "/run/herdr.sock");
-+        assert_eq!(argv[0], "pi-live-clone");
++        let argv = twin_argv("clone", "w1:p3", "uuid-abc", "/run/herdr.sock");
++        assert_eq!(argv[0], "pi-twin");
 +        assert_eq!(argv[1], "clone");
 +        assert_eq!(argv[2], "--pane");
 +        assert_eq!(argv[3], "w1:p3");
@@ -1019,7 +1003,7 @@ index 0000000..330332d
 +
 +    #[test]
 +    fn argv_merge_uses_merge_subcommand() {
-+        let argv = live_clone_argv("merge", "w2:p5", "uuid-xyz", "/run/herdr.sock");
++        let argv = twin_argv("merge", "w2:p5", "uuid-xyz", "/run/herdr.sock");
 +        assert_eq!(argv[1], "merge");
 +        assert_eq!(argv[3], "w2:p5");
 +        assert_eq!(argv[5], "uuid-xyz");
@@ -1029,48 +1013,48 @@ index 0000000..330332d
 +
 +    #[test]
 +    fn validation_accepts_valid_original_session() {
-+        let t = tokens_from(&[("live_clone", "1"), ("live_clone_session", "my-session-id")]);
-+        assert!(validate_live_clone_tokens(&t, "my-session-id", false).is_ok());
++        let t = tokens_from(&[("twin", "1"), ("twin_session", "my-session-id")]);
++        assert!(validate_twin_tokens(&t, "my-session-id", false).is_ok());
 +    }
 +
 +    #[test]
 +    fn validation_accepts_valid_clone_session_for_merge() {
 +        let t = tokens_from(&[
-+            ("live_clone", "1"),
-+            ("live_clone_session", "my-session-id"),
-+            ("live_clone_parent", "1"),
++            ("twin", "1"),
++            ("twin_session", "my-session-id"),
++            ("twin_parent", "1"),
 +        ]);
-+        assert!(validate_live_clone_tokens(&t, "my-session-id", true).is_ok());
++        assert!(validate_twin_tokens(&t, "my-session-id", true).is_ok());
 +    }
 +
 +    #[test]
-+    fn validation_rejects_when_live_clone_token_gone() {
-+        // Session was replaced — live_clone token removed.
-+        let t = tokens_from(&[("live_clone_session", "my-session-id")]);
-+        let err = validate_live_clone_tokens(&t, "my-session-id", false).unwrap_err();
-+        assert!(err.contains("live_clone token"), "err: {err}");
++    fn validation_rejects_when_twin_token_gone() {
++        // Session was replaced — twin token removed.
++        let t = tokens_from(&[("twin_session", "my-session-id")]);
++        let err = validate_twin_tokens(&t, "my-session-id", false).unwrap_err();
++        assert!(err.contains("twin token"), "err: {err}");
 +    }
 +
 +    #[test]
 +    fn validation_rejects_wrong_session_id() {
-+        let t = tokens_from(&[("live_clone", "1"), ("live_clone_session", "new-session")]);
-+        let err = validate_live_clone_tokens(&t, "old-session", false).unwrap_err();
++        let t = tokens_from(&[("twin", "1"), ("twin_session", "new-session")]);
++        let err = validate_twin_tokens(&t, "old-session", false).unwrap_err();
 +        assert!(err.contains("session"), "err: {err}");
 +    }
 +
 +    #[test]
 +    fn validation_rejects_empty_session_id_in_tokens() {
 +        // Extension published token before session was set.
-+        let t = tokens_from(&[("live_clone", "1"), ("live_clone_session", "")]);
-+        let err = validate_live_clone_tokens(&t, "some-id", false).unwrap_err();
++        let t = tokens_from(&[("twin", "1"), ("twin_session", "")]);
++        let err = validate_twin_tokens(&t, "some-id", false).unwrap_err();
 +        assert!(err.contains("session"), "err: {err}");
 +    }
 +
 +    #[test]
 +    fn validation_rejects_merge_when_parent_token_gone() {
-+        // Clone session was superseded; live_clone_parent no longer published.
-+        let t = tokens_from(&[("live_clone", "1"), ("live_clone_session", "my-session-id")]);
-+        let err = validate_live_clone_tokens(&t, "my-session-id", true).unwrap_err();
-+        assert!(err.contains("live_clone_parent"), "err: {err}");
++        // Clone session was superseded; twin_parent no longer published.
++        let t = tokens_from(&[("twin", "1"), ("twin_session", "my-session-id")]);
++        let err = validate_twin_tokens(&t, "my-session-id", true).unwrap_err();
++        assert!(err.contains("twin_parent"), "err: {err}");
 +    }
 +}
